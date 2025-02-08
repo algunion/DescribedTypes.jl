@@ -6,14 +6,12 @@ version = "1.0.0-DEV"
 [deps]
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
-JSONSchemaGenerator = "b10a6b5e-eaef-4b72-b159-8e5005e98e8e"
 OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 
 [compat]
 ArgCheck = "2.4.0"
 JSON3 = "1.14.1"
-JSONSchemaGenerator = "0.1.0"
 OrderedCollections = "1.8.0"
 StructTypes = "1.11.0"
 julia = "1.11"

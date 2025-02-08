@@ -1,5 +1,5 @@
 module DescribedTypes
+using OrderedCollections: OrderedDict
 
-# Write your package code here.
 
 end
