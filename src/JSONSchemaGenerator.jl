@@ -1,8 +1,10 @@
 # Adapted/changed the MIT Licensed code from: https://github.com/matthijscox/JSONSchemaGenerator.jl
 module JSONSchemaGenerator
+using ..LLMAdapters
 
 import OrderedCollections: OrderedDict
 import StructTypes
+
 
 # by default we assume the type is a custom type, which should be a JSON object
 _json_type(::Type{<:Any}) = :object
@@ -29,6 +31,7 @@ Base.@kwdef mutable struct SchemaSettings
     reference_types::Set{DataType}
     reference_path = "#/\$defs/"
     dict_type::Type{<:AbstractDict} = OrderedDict
+    llm_adapter::LLMAdapter = LLMAdapter.STANDARD
 end
 
 """
@@ -66,7 +69,8 @@ schema_dict = JSONSchemaGenerator.schema(NestedFieldSchema)
 function schema(
     schema_type::Type;
     use_references::Bool=false,
-    dict_type::Type{<:AbstractDict}=OrderedDict
+    dict_type::Type{<:AbstractDict}=OrderedDict,
+    llm_adapter::LLMAdapter=LLMAdapter.STANDARD
 )::AbstractDict{String,Any}
     if use_references
         reference_types = _gather_data_types(schema_type)
@@ -77,9 +81,24 @@ function schema(
         use_references=use_references,
         reference_types=reference_types,
         dict_type=dict_type,
+        llm_adapter=llm_adapter
     )
     d = _generate_json_object(schema_type, settings)
-    return d
+    if settings.llm_adapter == LLMAdapter.STANDARD
+        return d
+    else
+        annotations = @doc schema_type
+
+        if settings.llm_adapter == LLMAdapter.OPENAI
+            result = OrderedDict(
+            )
+        elseif settings.llm_adapter == LLMAdapter.GEMINI
+
+        end
+    end
+
+
+
 end
 
 # by default we do not resolve nested objects into reference definitions
