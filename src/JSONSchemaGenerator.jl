@@ -87,10 +87,14 @@ function schema(
     if settings.llm_adapter == LLMAdapter.STANDARD
         return d
     else
-        annotations = @doc schema_type
+        annotation = @doc schema_type
 
-        if settings.llm_adapter == LLMAdapter.OPENAI
+        if settings.llm_adapter == LLMAdapter.OPENAI && annotation isa Annotation
             result = OrderedDict(
+                "name" => getfield(annotation, :name),
+                "description" => getfield(annotation, :description),
+                "strict" => true,
+                "parameters" => d
             )
         elseif settings.llm_adapter == LLMAdapter.GEMINI
 
@@ -116,7 +120,10 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
     # TODO: use StructTypes.names instead of fieldnames
     for (name, type) in zip(names, types)
         name_string = string(name)
-        if _is_nothing_union(type) # we assume it's an optional field type
+
+        annotation = @doc type
+
+        if _is_nothing_union(type) && (settings.llm_adapter != LLMAdapter.OPENAI) # we assume it's an optional field type / to do: check GEMINI
             @assert name in optional_fields "we miss $name in $(StructTypes.omitempties(julia_type))"
             type = _get_optional_type(type)
         elseif !(name in optional_fields)
