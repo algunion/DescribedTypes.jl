@@ -1,33 +1,36 @@
-"""
-LLMAdapters.jl - Julia module for handling different LLM adapters for generating structured outputs.
-"""
 module LLMAdapters
 import OrderedCollections: OrderedDict
-# const _OPENAI_SY::Symbol = :openai_structured_output
-# const OPENAI_TYPE::DataType = Val{_OPENAI_SY}
-# const OPENAI::Val{_OPENAI_SY} = Val(_OPENAI_SY)
-
-# const OPENAI::Symbol = :openai_structured_output
-# const GEMINI::Symbol = :gemini_structured_output
 
 @enum LLMAdapter STANDARD OPENAI GEMINI
 
 @kwdef struct Annotation
     name::String
-    description::String
+    description::String = ""
     markdown::String = ""
-    parameters::OrderedDict{String,Any}
+    parameters::Union{Nothing,OrderedDict{Symbol,Annotation}} = nothing
 end
 
-export LLMAdapter, Annotation
+Annotation(name) = Annotation(name=name, description="Semantic of $name in the context of the schema")
 
-@doc Annotation("da", "de", "", OrderedDict())
-struct TestStruct
-    x::Int
+getname(annotation::Annotation) = getfield(annotation, :name)
+
+getdescription(annotation::Annotation) = getfield(annotation, :description)
+
+function getdescription(annotation::Annotation, field::Symbol)
+    isnothing(getfield(annotation, :parameters)) && return "Semantic of $field in the context of the schema"
+    if haskey(getfield(annotation, :parameters), field)
+        return getdescription(getfield(annotation, :parameters)[field])
+    else
+        return "Semantic of $field in the context of the schema"
+    end
 end
 
-@doc Annotation("dad", "ded", "", OrderedDict())
-TestStruct() = TestStruct(0)
+export LLMAdapter, Annotation, STANDARD, OPENAI, GEMINI, getname, getdescription
 
+# @doc Annotation(name="test", description="test", markdown="test", parameters=OrderedDict("test" => Annotation(name="test", description="test")))
+# struct TestStruct
+#     a::Int
+#     b::String
+# end
 
 end

@@ -1,11 +1,5 @@
 # Adapted/changed the MIT Licensed code from: https://github.com/matthijscox/JSONSchemaGenerator.jl
-module JSONSchemaGenerator
-using ..LLMAdapters
-
-using ArgCheck
-import OrderedCollections: OrderedDict
-import StructTypes
-
+using .LLMAdapters
 
 # by default we assume the type is a custom type, which should be a JSON object
 _json_type(::Type{<:Any}) = :object
@@ -32,7 +26,7 @@ Base.@kwdef mutable struct SchemaSettings
     reference_types::Set{DataType}
     reference_path = "#/\$defs/"
     dict_type::Type{<:AbstractDict} = OrderedDict
-    llm_adapter::LLMAdapter = LLMAdapter.STANDARD
+    llm_adapter::LLMAdapter = STANDARD
 end
 
 """
@@ -41,7 +35,7 @@ schema(
     schema_type::Type;
     use_references::Bool = false,
     dict_type::Type{<:AbstractDict} = OrderedCollections.OrderedDict
-    llm_adapter::LLMAdapter = LLMAdapter.STANDARD
+    llm_adapter::LLMAdapter = STANDARD
 )::AbstractDict{String, Any}
 ```
 
@@ -72,7 +66,7 @@ function schema(
     schema_type::Type;
     use_references::Bool=false,
     dict_type::Type{<:AbstractDict}=OrderedDict,
-    llm_adapter::LLMAdapter=LLMAdapter.STANDARD
+    llm_adapter::LLMAdapter=STANDARD
 )::AbstractDict{String,Any}
     if use_references
         reference_types = _gather_data_types(schema_type)
@@ -86,36 +80,44 @@ function schema(
         llm_adapter=llm_adapter
     )
     d = _generate_json_object(schema_type, settings)
-    if settings.llm_adapter == LLMAdapter.STANDARD
+    if settings.llm_adapter == STANDARD
         return d
-    else
-        annotation = @doc schema_type
+    elseif settings.llm_adapter == OPENAI
+        annot = (@doc schema_type)
+        annotation = Annotation("placeholder")
 
-        if settings.llm_adapter == LLMAdapter.OPENAI && annotation isa Annotation
+        if annot isa Vector{Annotation} && length(annot) > 0
+            annotation::Annotation = annot[1]
+        end
+
+        if settings.llm_adapter == OPENAI && annotation isa Annotation
             result = OrderedDict(
-                "name" => getfield(annotation, :name),
-                "description" => getfield(annotation, :description),
+                "name" => getname(annotation),
+                "description" => getdescription(annotation),
                 "strict" => true,
                 "parameters" => d
             )
             return result
-        elseif settings.llm_adapter == LLMAdapter.GEMINI
+        elseif settings.llm_adapter == GEMINI
             return d # TO DO: implement GEMINI
         end
+    else
+        return d # TO DO: implement GEMINI
     end
-
-
 
 end
 
 # by default we do not resolve nested objects into reference definitions
 function _generate_json_object(julia_type::Type, settings::SchemaSettings)
     isstruct = isstructtype(julia_type)
-    annot = @doc julia_type
-    annotation = OrderedDict{String,Any}()
+    annot = (@doc julia_type)
 
-    if isstruct && annot isa Vector
-        annotation::OrderedDict{String,Any} = annot[1]
+    parameters = OrderedDict{String,Any}()
+    annotation = Annotation("")
+
+    if isstruct && annot isa Vector{Annotation}
+        parameters::OrderedDict{String,Any} = getfield(annot[1], :parameters)
+        annotation = annot[1]
     end
 
     is_top_level = settings.toplevel
@@ -131,14 +133,15 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
     json_properties = []
     optional_fields = StructTypes.omitempties(julia_type)
     for (name, type) in zip(names, types)
-        name_string = string(get(structypes_names, name, name))
+        sym_name = get(structypes_names, name, name)
+        name_string = string(sym_name)
 
         is_optional = _is_nothing_union(type)
 
         if is_optional # we assume it's an optional field type / to do: check GEMINI
             @argcheck name in optional_fields "we miss $name in $(StructTypes.omitempties(julia_type))"
             type = _get_optional_type(type)
-            if settings.llm_adapter == LLMAdapter.OPENAI
+            if settings.llm_adapter == OPENAI
                 push!(required_json_property_names, name_string)
             end
         elseif !(name in optional_fields)
@@ -147,18 +150,24 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
 
         if settings.use_references && type in settings.reference_types
             rt = _json_reference(type, settings)
-            if is_optional
+            if is_optional && settings.llm_adapter == OPENAI
                 push!(json_properties, settings.dict_type{String,Any}(
+                    "description" => getdescription(annotation, sym_name),
                     "anyOf" => [rt, settings.dict_type{String,Any}("type" => "null")]
                 ))
             else
+                rt["description"] = getdescription(annotation, sym_name)
                 push!(json_properties, rt)
             end
         else
             jt = _generate_json_type_def(type, settings)
 
-            if is_optional && haskey(jt, "type")
-                jt["type"] = [jt["type"], "null"]
+            if settings.llm_adapter == OPENAI
+                if is_optional && haskey(jt, "type")
+                    jt["type"] = [jt["type"], "null"]
+
+                end
+                jt["description"] = getdescription(annotation, sym_name)
             end
 
             push!(json_properties, jt)
@@ -173,11 +182,11 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
         ),
         "required" => required_json_property_names,
     )
-    if settings.llm_adapter == LLMAdapter.OPENAI
+    if settings.llm_adapter == OPENAI
         d["additionalProperties"] = false
 
         if !is_top_level
-            d["description"] = get(annotation, :description, "Description inferred from the name semantic: $json_property_names")
+            d["description"] = getdescription(annotation)
         end
     end
 
@@ -265,4 +274,3 @@ function _get_type_to_gather(input_type::Type)
     return type_to_gather
 end
 
-end
