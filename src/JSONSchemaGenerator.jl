@@ -2,6 +2,7 @@
 module JSONSchemaGenerator
 using ..LLMAdapters
 
+using ArgCheck
 import OrderedCollections: OrderedDict
 import StructTypes
 
@@ -40,6 +41,7 @@ schema(
     schema_type::Type;
     use_references::Bool = false,
     dict_type::Type{<:AbstractDict} = OrderedCollections.OrderedDict
+    llm_adapter::LLMAdapter = LLMAdapter.STANDARD
 )::AbstractDict{String, Any}
 ```
 
@@ -96,8 +98,9 @@ function schema(
                 "strict" => true,
                 "parameters" => d
             )
+            return result
         elseif settings.llm_adapter == LLMAdapter.GEMINI
-
+            return d # TO DO: implement GEMINI
         end
     end
 
@@ -107,32 +110,59 @@ end
 
 # by default we do not resolve nested objects into reference definitions
 function _generate_json_object(julia_type::Type, settings::SchemaSettings)
+    isstruct = isstructtype(julia_type)
+    annot = @doc julia_type
+    annotation = OrderedDict{String,Any}()
+
+    if isstruct && annot isa Vector
+        annotation::OrderedDict{String,Any} = annot[1]
+    end
+
     is_top_level = settings.toplevel
+
     if is_top_level
         settings.toplevel = false # downstream types are not toplevel
     end
     names = fieldnames(julia_type)
+    structypes_names = StructTypes.names(julia_type) |> OrderedDict
     types = fieldtypes(julia_type)
     json_property_names = String[]
     required_json_property_names = String[]
     json_properties = []
     optional_fields = StructTypes.omitempties(julia_type)
-    # TODO: use StructTypes.names instead of fieldnames
     for (name, type) in zip(names, types)
-        name_string = string(name)
+        name_string = string(get(structypes_names, name, name))
 
-        annotation = @doc type
+        is_optional = _is_nothing_union(type)
 
-        if _is_nothing_union(type) && (settings.llm_adapter != LLMAdapter.OPENAI) # we assume it's an optional field type / to do: check GEMINI
-            @assert name in optional_fields "we miss $name in $(StructTypes.omitempties(julia_type))"
+        if is_optional # we assume it's an optional field type / to do: check GEMINI
+            @argcheck name in optional_fields "we miss $name in $(StructTypes.omitempties(julia_type))"
             type = _get_optional_type(type)
+            if settings.llm_adapter == LLMAdapter.OPENAI
+                push!(required_json_property_names, name_string)
+            end
         elseif !(name in optional_fields)
             push!(required_json_property_names, name_string)
         end
+
         if settings.use_references && type in settings.reference_types
-            push!(json_properties, _json_reference(type, settings))
+            rt = _json_reference(type, settings)
+            if is_optional
+                push!(json_properties, settings.dict_type{String,Any}(
+                    "anyOf" => [rt, settings.dict_type{String,Any}("type" => "null")]
+                ))
+            else
+                push!(json_properties, rt)
+            end
         else
-            push!(json_properties, _generate_json_type_def(type, settings))
+            jt = _generate_json_type_def(type, settings)
+
+            if is_optional && haskey(jt, "type")
+                jt["type"] = [jt["type"], "null"]
+            end
+
+            push!(json_properties, jt)
+
         end
         push!(json_property_names, name_string)
     end
@@ -143,6 +173,14 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
         ),
         "required" => required_json_property_names,
     )
+    if settings.llm_adapter == LLMAdapter.OPENAI
+        d["additionalProperties"] = false
+
+        if !is_top_level
+            d["description"] = get(annotation, :description, "Description inferred from the name semantic: $json_property_names")
+        end
+    end
+
     if is_top_level && settings.use_references
         d["\$defs"] = _generate_json_reference_types(settings)
     end
@@ -172,6 +210,7 @@ end
 
 function _generate_json_type_def(::Val{:enum}, julia_type::Type, settings::SchemaSettings)
     return settings.dict_type{String,Any}(
+        "type" => "string",
         "enum" => string.(instances(julia_type))
     )
 end
