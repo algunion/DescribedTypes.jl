@@ -1,6 +1,3 @@
-
-import OrderedCollections: OrderedDict
-
 @enum LLMAdapter STANDARD OPENAI GEMINI
 
 @kwdef struct Annotation
