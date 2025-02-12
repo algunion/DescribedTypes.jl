@@ -34,7 +34,33 @@ schema_dict = DescribedTypes.schema(Person, llm_adapter=DescribedTypes.OPENAI)
 JSON3.pretty(schema_dict)
 ```
 
-This will generate a JSON schema for the `Person` type with annotations for the fields.
+This will generate a JSON schema for the `Person` type with annotations for the fields:
+
+```json
+{
+    "name": "Person",
+    "description": "A schema for a person.",
+    "strict": true,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "The name of the person"
+            },
+            "age": {
+                "type": "integer",
+                "description": "The age of the person"
+            }
+        },
+        "required": [
+            "name",
+            "age"
+        ],
+        "additionalProperties": false
+    }
+}
+```
 
 ## Advanced Example
 
@@ -65,7 +91,37 @@ schema_dict = DescribedTypes.schema(OptionalFieldSchema, llm_adapter=DescribedTy
 JSON3.pretty(schema_dict)
 ```
 
-This will generate a JSON schema for the `OptionalFieldSchema` type, including handling for optional fields in a way that is [compatible with OpenAI's LLM API](https://platform.openai.com/docs/guides/structured-outputs/supported-schemas?format=without-parse#all-fields-must-be-required):
+**Output**:
+```json
+{
+    "name": "OptionalFieldSchema",
+    "description": "A schema containing an optional field.",
+    "strict": true,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "int": {
+                "type": "integer",
+                "description": "An integer field"
+            },
+            "optional": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "description": "An optional string field"
+            }
+        },
+        "required": [
+            "int",
+            "optional"
+        ],
+        "additionalProperties": false
+    }
+}
+```
+
+This above ensures a JSON schema for the `OptionalFieldSchema` type, including handling for optional fields in a way that is [compatible with OpenAI's LLM API](https://platform.openai.com/docs/guides/structured-outputs/supported-schemas?format=without-parse#all-fields-must-be-required):
 > Although all fields must be required (and the model will return a value for each parameter), it is possible to emulate an optional parameter by using a union type with null.
 
 
