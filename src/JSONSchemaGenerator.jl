@@ -1,5 +1,5 @@
 # Adapted/changed the MIT Licensed code from: https://github.com/matthijscox/JSONSchemaGenerator.jl
-using .LLMAdapters
+
 
 # by default we assume the type is a custom type, which should be a JSON object
 _json_type(::Type{<:Any}) = :object
@@ -83,14 +83,9 @@ function schema(
     if settings.llm_adapter == STANDARD
         return d
     elseif settings.llm_adapter == OPENAI
-        annot = (@doc schema_type)
-        annotation = Annotation("placeholder")
+        annotation = annotate(schema_type)
 
-        if annot isa Vector{Annotation} && length(annot) > 0
-            annotation::Annotation = annot[1]
-        end
-
-        if settings.llm_adapter == OPENAI && annotation isa Annotation
+        if settings.llm_adapter == OPENAI
             result = OrderedDict(
                 "name" => getname(annotation),
                 "description" => getdescription(annotation),
@@ -110,15 +105,7 @@ end
 # by default we do not resolve nested objects into reference definitions
 function _generate_json_object(julia_type::Type, settings::SchemaSettings)
     isstruct = isstructtype(julia_type)
-    annot = (@doc julia_type)
-
-    parameters = OrderedDict{String,Any}()
-    annotation = Annotation("")
-
-    if isstruct && annot isa Vector{Annotation}
-        parameters::OrderedDict{String,Any} = getfield(annot[1], :parameters)
-        annotation = annot[1]
-    end
+    annotation = annotate(julia_type)
 
     is_top_level = settings.toplevel
 

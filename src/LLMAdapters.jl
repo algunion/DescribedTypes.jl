@@ -1,4 +1,4 @@
-module LLMAdapters
+
 import OrderedCollections: OrderedDict
 
 @enum LLMAdapter STANDARD OPENAI GEMINI
@@ -25,7 +25,9 @@ function getdescription(annotation::Annotation, field::Symbol)
     end
 end
 
-export LLMAdapter, Annotation, STANDARD, OPENAI, GEMINI, getname, getdescription
+function annotate end
+
+annotate(::Type{T}) where {T} = Annotation(string(T))
 
 # @doc Annotation(name="test", description="test", markdown="test", parameters=OrderedDict("test" => Annotation(name="test", description="test")))
 # struct TestStruct
@@ -33,4 +35,3 @@ export LLMAdapter, Annotation, STANDARD, OPENAI, GEMINI, getname, getdescription
 #     b::String
 # end
 
-end
