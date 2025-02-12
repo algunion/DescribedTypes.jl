@@ -156,14 +156,14 @@ end
 @testset "Basic Types Annotated" begin
     json_schema = DescribedTypes.schema(TestTypes.BasicSchema, llm_adapter=DescribedTypes.OPENAI)
     # replicating the tests from above with the [parameters] additions before [properties]
-    @test json_schema["parameters"]["type"] == "object"
+    @test json_schema["schema"]["type"] == "object"
     object_properties = ["int", "float", "string"]
-    @test all(x in object_properties for x in json_schema["parameters"]["required"])
-    @test all(x in object_properties for x in keys(json_schema["parameters"]["properties"]))
+    @test all(x in object_properties for x in json_schema["schema"]["required"])
+    @test all(x in object_properties for x in keys(json_schema["schema"]["properties"]))
 
-    @test json_schema["parameters"]["properties"]["int"]["type"] == "integer"
-    @test json_schema["parameters"]["properties"]["float"]["type"] == "number"
-    @test json_schema["parameters"]["properties"]["string"]["type"] == "string"
+    @test json_schema["schema"]["properties"]["int"]["type"] == "integer"
+    @test json_schema["schema"]["properties"]["float"]["type"] == "number"
+    @test json_schema["schema"]["properties"]["string"]["type"] == "string"
 
     test_json_schema_validation(TestTypes.BasicSchema(1, 1.0, "a"))
 
@@ -184,7 +184,7 @@ end
     json_schema = DescribedTypes.schema(TestTypes.EnumeratedSchema, llm_adapter=DescribedTypes.OPENAI)
 
     enum_instances = ["apple", "orange"]
-    fruit_json_enum = json_schema["parameters"]["properties"]["fruit"]["enum"]
+    fruit_json_enum = json_schema["schema"]["properties"]["fruit"]["enum"]
     @test all(x in fruit_json_enum for x in enum_instances)
 
     test_json_schema_validation(TestTypes.EnumeratedSchema(TestTypes.apple))
@@ -212,9 +212,9 @@ end
 
 @testset "Optional Fields Annotated" begin
     json_schema = DescribedTypes.schema(TestTypes.OptionalFieldSchema, llm_adapter=DescribedTypes.OPENAI)
-    @test ("optional" in json_schema["parameters"]["required"])
-    @test json_schema["parameters"]["required"] == ["int", "optional"]
-    @test json_schema["parameters"]["properties"]["optional"]["type"] == ["string", "null"]
+    @test ("optional" in json_schema["schema"]["required"])
+    @test json_schema["schema"]["required"] == ["int", "optional"]
+    @test json_schema["schema"]["properties"]["optional"]["type"] == ["string", "null"]
 
     # and the JSONSchema validation works fine
     test_json_schema_validation(TestTypes.OptionalFieldSchema(1, nothing))
@@ -246,20 +246,20 @@ end
 @testset "Arrays Annotated" begin
     json_schema = DescribedTypes.schema(TestTypes.ArraySchema, llm_adapter=DescribedTypes.OPENAI)
     # so behavior depends on the eltype of the array
-    @test json_schema["parameters"]["properties"]["integers"]["type"] == "array"
-    @test json_schema["parameters"]["properties"]["integers"]["items"]["type"] == "integer"
+    @test json_schema["schema"]["properties"]["integers"]["type"] == "array"
+    @test json_schema["schema"]["properties"]["integers"]["items"]["type"] == "integer"
 
     opt_schema = DescribedTypes.schema(TestTypes.OptionalFieldSchema, llm_adapter=DescribedTypes.OPENAI)
-    @test json_schema["parameters"]["properties"]["types"]["items"]["properties"] == opt_schema["parameters"]["properties"]
-    @test json_schema["parameters"]["properties"]["types"]["items"]["required"] == opt_schema["parameters"]["required"]
+    @test json_schema["schema"]["properties"]["types"]["items"]["properties"] == opt_schema["schema"]["properties"]
+    @test json_schema["schema"]["properties"]["types"]["items"]["required"] == opt_schema["schema"]["required"]
 
     test_json_schema_validation(TestTypes.ArraySchema())
 
     # @info "Arrays Annotated JSON 1"
-    # (JSON3.pretty(opt_schema["parameters"]))
+    # (JSON3.pretty(opt_schema["schema"]))
 
     # @info "Arrays Annotated JSON 2"
-    # (JSON3.pretty(json_schema["parameters"]["properties"]["types"]["items"]))
+    # (JSON3.pretty(json_schema["schema"]["properties"]["types"]["items"]))
 end
 
 @testset "Nested Structs" begin
@@ -280,9 +280,9 @@ end
     nested_schema = DescribedTypes.schema(TestTypes.NestedSchema, llm_adapter=DescribedTypes.OPENAI)
     optional_field_schema = DescribedTypes.schema(TestTypes.OptionalFieldSchema, llm_adapter=DescribedTypes.OPENAI)
     # by default it's a nested JSON schema
-    nt1 = deepcopy(nested_schema["parameters"]["properties"]["optional"])
+    nt1 = deepcopy(nested_schema["schema"]["properties"]["optional"])
     delete!(nt1, "description")
-    nt2 = optional_field_schema["parameters"]
+    nt2 = optional_field_schema["schema"]
 
     @test nt1 == nt2
 
@@ -290,19 +290,19 @@ end
 
     double_nested_schema = DescribedTypes.schema(TestTypes.DoubleNestedSchema, llm_adapter=DescribedTypes.OPENAI)
 
-    delete!(double_nested_schema["parameters"]["properties"]["nested"], "description")
+    delete!(double_nested_schema["schema"]["properties"]["nested"], "description")
 
-    @test double_nested_schema["parameters"]["properties"]["nested"] == nested_schema["parameters"]
+    @test double_nested_schema["schema"]["properties"]["nested"] == nested_schema["schema"]
 
-    @info "Comparison Result: " TestTypes.compare_dicts(double_nested_schema["parameters"]["properties"]["nested"], nested_schema["parameters"])
+    @info "Comparison Result: " TestTypes.compare_dicts(double_nested_schema["schema"]["properties"]["nested"], nested_schema["schema"])
 
     test_json_schema_validation(TestTypes.DoubleNestedSchema())
 
     # @info "Nested Structs Annotated JSON 1"
-    # (JSON3.pretty(optional_field_schema["parameters"]))
+    # (JSON3.pretty(optional_field_schema["schema"]))
 
     # @info "Nested Structs Annotated JSON 2"
-    # (JSON3.pretty(nested_schema["parameters"]["properties"]["optional"]))
+    # (JSON3.pretty(nested_schema["schema"]["properties"]["optional"]))
 end
 
 @testset "StructTypes.DataType gathering" begin

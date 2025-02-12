@@ -90,7 +90,7 @@ function schema(
                 "name" => getname(annotation),
                 "description" => getdescription(annotation),
                 "strict" => true,
-                "parameters" => d
+                "schema" => d
             )
             return result
         elseif settings.llm_adapter == GEMINI
