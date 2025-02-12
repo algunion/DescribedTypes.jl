@@ -25,7 +25,7 @@ DescribedTypes.annotate(::Type{Person}) = DescribedTypes.Annotation(
     name="Person",
     description="A schema for a person.",
     parameters=OrderedDict(
-        :name => DescribedTypes.Annotation(name="name", description="The name of the person"),
+        :name => DescribedTypes.Annotation(name="name", description="The name of the person", enum=["Alice", "Bob"]),
         :age => DescribedTypes.Annotation(name="age", description="The age of the person")
     )
 )
@@ -46,7 +46,11 @@ This will generate a JSON schema for the `Person` type with annotations for the 
         "properties": {
             "name": {
                 "type": "string",
-                "description": "The name of the person"
+                "description": "The name of the person",
+                "enum": [
+                    "Alice",
+                    "Bob"
+                ]
             },
             "age": {
                 "type": "integer",

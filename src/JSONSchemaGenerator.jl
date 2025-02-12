@@ -155,6 +155,12 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
 
                 end
                 jt["description"] = getdescription(annotation, sym_name)
+
+                en = getenum(annotation, sym_name)
+                if !isnothing(en)
+                    jt["enum"] = en
+                end
+
             end
 
             push!(json_properties, jt)

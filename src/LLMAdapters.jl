@@ -7,6 +7,7 @@ import OrderedCollections: OrderedDict
     name::String
     description::String = ""
     markdown::String = ""
+    enum::Union{Nothing,Vector{String}} = nothing
     parameters::Union{Nothing,OrderedDict{Symbol,Annotation}} = nothing
 end
 
@@ -24,6 +25,17 @@ function getdescription(annotation::Annotation, field::Symbol)
         return "Semantic of $field in the context of the schema"
     end
 end
+
+getenum(annotation::Annotation) = getfield(annotation, :enum)
+function getenum(annotation::Annotation, field::Symbol)
+    isnothing(getfield(annotation, :parameters)) && return nothing
+    if haskey(getfield(annotation, :parameters), field)
+        return getenum(getfield(annotation, :parameters)[field])
+    else
+        return nothing
+    end
+end
+
 
 function annotate end
 
