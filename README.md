@@ -1,6 +1,7 @@
 # DescribedTypes
 
 [![Build Status](https://github.com/algunion/DescribedTypes.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/algunion/DescribedTypes.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/algunion/DescribedTypes.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/algunion/DescribedTypes.jl)
 
 This package provides a way to annotate Julia types with descriptions, which are
 then used to generate JSON Schemas compatible with LLM provider APIs (for
