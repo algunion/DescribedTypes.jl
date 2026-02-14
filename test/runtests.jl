@@ -440,3 +440,440 @@ end
         @test openai_schema["strict"] == tools_schema["strict"]
     end
 end
+
+# ===================================================================
+# Edge-case / coverage-gap tests
+# ===================================================================
+
+# --- Additional test types -----------------------------------------------------------
+
+module EdgeTestTypes
+using DescribedTypes
+
+struct BooleanSchema
+    flag::Bool
+    name::String
+end
+DescribedTypes.annotate(::Type{BooleanSchema}) = DescribedTypes.Annotation(
+    name="BooleanSchema",
+    description="A schema with a boolean field.",
+    parameters=Dict(
+        :flag => DescribedTypes.Annotation(name="flag", description="A boolean flag"),
+        :name => DescribedTypes.Annotation(name="name", description="A name"),
+    ),
+)
+
+# Type with NO custom annotation — exercises the default `annotate` fallback
+struct UnannotatedSchema
+    x::Int
+    y::String
+end
+
+# Type with an enum annotation on a *field* (not an enum Julia type)
+struct EnumFieldAnnotated
+    color::String
+    size::Int
+end
+DescribedTypes.annotate(::Type{EnumFieldAnnotated}) = DescribedTypes.Annotation(
+    name="EnumFieldAnnotated",
+    description="Schema with an enum-annotated string field.",
+    parameters=Dict(
+        :color => DescribedTypes.Annotation(name="color", description="The color", enum=["red", "green", "blue"]),
+        :size => DescribedTypes.Annotation(name="size", description="The size"),
+    ),
+)
+
+# Type with an optional field that is itself a nested struct (for anyOf + $ref branch)
+struct OptionalNestedSchema
+    label::String
+    child::Union{Nothing,BooleanSchema}
+end
+DescribedTypes.annotate(::Type{OptionalNestedSchema}) = DescribedTypes.Annotation(
+    name="OptionalNestedSchema",
+    description="Schema with an optional nested struct field.",
+    parameters=Dict(
+        :label => DescribedTypes.Annotation(name="label", description="Label"),
+        :child => DescribedTypes.Annotation(name="child", description="Optional child"),
+    ),
+)
+
+# Deeply nested with arrays of optional-field structs for reference gathering
+struct MultiNestedSchema
+    items::Vector{OptionalNestedSchema}
+    primary::BooleanSchema
+end
+DescribedTypes.annotate(::Type{MultiNestedSchema}) = DescribedTypes.Annotation(
+    name="MultiNestedSchema",
+    description="Schema with arrays of nested types.",
+    parameters=Dict(
+        :items => DescribedTypes.Annotation(name="items", description="Items"),
+        :primary => DescribedTypes.Annotation(name="primary", description="Primary"),
+    ),
+)
+
+end # module EdgeTestTypes
+
+# --- _json_type coverage ---
+
+@testset "_json_type edge cases" begin
+    @test DescribedTypes._json_type(Bool) == :boolean
+    @test DescribedTypes._json_type(Nothing) == :null
+    @test DescribedTypes._json_type(Missing) == :null
+    @test DescribedTypes._json_type(Int32) == :integer
+    @test DescribedTypes._json_type(Float32) == :number
+    @test DescribedTypes._json_type(SubString{String}) == :string
+    @test DescribedTypes._json_type(Vector{Int}) == :array
+    @test DescribedTypes._json_type(Matrix{Float64}) == :array
+    @test DescribedTypes._json_type(EdgeTestTypes.BooleanSchema) == :object
+end
+
+# --- _is_nothing_union coverage ---
+
+@testset "_is_nothing_union edge cases" begin
+    @test DescribedTypes._is_nothing_union(Nothing) == false
+    @test DescribedTypes._is_nothing_union(Int) == false
+    @test DescribedTypes._is_nothing_union(String) == false
+    @test DescribedTypes._is_nothing_union(Union{Nothing,Int}) == true
+    @test DescribedTypes._is_nothing_union(Union{Nothing,String}) == true
+end
+
+# --- _is_openai_mode coverage ---
+
+@testset "_is_openai_mode" begin
+    @test DescribedTypes._is_openai_mode(DescribedTypes.STANDARD) == false
+    @test DescribedTypes._is_openai_mode(DescribedTypes.GEMINI) == false
+    @test DescribedTypes._is_openai_mode(DescribedTypes.OPENAI) == true
+    @test DescribedTypes._is_openai_mode(DescribedTypes.OPENAI_TOOLS) == true
+end
+
+# --- Annotation helpers ---
+
+@testset "Annotation single-arg constructor" begin
+    a = DescribedTypes.Annotation("Foo")
+    @test DescribedTypes.getname(a) == "Foo"
+    @test DescribedTypes.getdescription(a) == "Semantic of Foo in the context of the schema"
+    @test DescribedTypes.getenum(a) === nothing
+    @test a.parameters === nothing
+    @test a.markdown == ""
+end
+
+@testset "getdescription fallback for missing params/field" begin
+    # parameters is nothing
+    a = DescribedTypes.Annotation(name="T", description="top")
+    @test DescribedTypes.getdescription(a, :nonexistent) == "Semantic of nonexistent in the context of the schema"
+
+    # parameters exists but field is missing
+    a2 = DescribedTypes.Annotation(
+        name="T",
+        description="top",
+        parameters=Dict(:x => DescribedTypes.Annotation(name="x", description="X desc")),
+    )
+    @test DescribedTypes.getdescription(a2, :x) == "X desc"
+    @test DescribedTypes.getdescription(a2, :missing_field) == "Semantic of missing_field in the context of the schema"
+end
+
+@testset "getenum helpers" begin
+    # getenum on annotation with no enum
+    a = DescribedTypes.Annotation(name="A", description="d")
+    @test DescribedTypes.getenum(a) === nothing
+
+    # getenum on annotation with enum
+    a2 = DescribedTypes.Annotation(name="A", description="d", enum=["a", "b"])
+    @test DescribedTypes.getenum(a2) == ["a", "b"]
+
+    # getenum(a, field) when parameters is nothing
+    @test DescribedTypes.getenum(a, :foo) === nothing
+
+    # getenum(a, field) when field is missing
+    a3 = DescribedTypes.Annotation(
+        name="A",
+        description="d",
+        parameters=Dict(:x => DescribedTypes.Annotation(name="x", description="X")),
+    )
+    @test DescribedTypes.getenum(a3, :missing_field) === nothing
+
+    # getenum(a, field) when field has enum
+    a4 = DescribedTypes.Annotation(
+        name="A",
+        description="d",
+        parameters=Dict(:c => DescribedTypes.Annotation(name="c", description="C", enum=["r", "g", "b"])),
+    )
+    @test DescribedTypes.getenum(a4, :c) == ["r", "g", "b"]
+end
+
+# --- Default annotate fallback ---
+
+@testset "Default annotate (unannotated type)" begin
+    a = DescribedTypes.annotate(EdgeTestTypes.UnannotatedSchema)
+    @test DescribedTypes.getname(a) == string(EdgeTestTypes.UnannotatedSchema)
+    @test contains(DescribedTypes.getdescription(a), "Semantic of")
+end
+
+@testset "Unannotated schema generation" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.UnannotatedSchema)
+    @test json_schema["type"] == "object"
+    @test "x" in json_schema["required"]
+    @test "y" in json_schema["required"]
+    @test json_schema["properties"]["x"]["type"] == "integer"
+    @test json_schema["properties"]["y"]["type"] == "string"
+
+    test_json_schema_validation(json_schema, EdgeTestTypes.UnannotatedSchema(1, "hi"))
+end
+
+# --- Bool field ---
+
+@testset "Boolean field schema" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.BooleanSchema)
+    @test json_schema["properties"]["flag"]["type"] == "boolean"
+    @test json_schema["properties"]["name"]["type"] == "string"
+
+    test_json_schema_validation(json_schema, EdgeTestTypes.BooleanSchema(true, "Alice"))
+    test_json_schema_validation(json_schema, EdgeTestTypes.BooleanSchema(false, "Bob"))
+end
+
+@testset "Boolean field OPENAI" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.BooleanSchema, llm_adapter=DescribedTypes.OPENAI)
+    inner = json_schema["schema"]
+    @test inner["properties"]["flag"]["type"] == "boolean"
+    @test inner["additionalProperties"] == false
+end
+
+# --- GEMINI adapter ---
+
+@testset "GEMINI adapter" begin
+    json_schema = DescribedTypes.schema(TestTypes.BasicSchema, llm_adapter=DescribedTypes.GEMINI)
+    # GEMINI currently returns plain schema (same as STANDARD)
+    @test json_schema["type"] == "object"
+    @test json_schema["properties"]["int"]["type"] == "integer"
+    @test !haskey(json_schema, "additionalProperties")
+
+    json_schema2 = DescribedTypes.schema(TestTypes.OptionalFieldSchema, llm_adapter=DescribedTypes.GEMINI)
+    @test json_schema2["type"] == "object"
+    @test json_schema2["required"] == ["int"]
+end
+
+# --- Enum annotation on a field (OpenAI mode) ---
+
+@testset "Enum annotation on field (OPENAI)" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.EnumFieldAnnotated, llm_adapter=DescribedTypes.OPENAI)
+    inner = json_schema["schema"]
+    @test inner["properties"]["color"]["enum"] == ["red", "green", "blue"]
+    @test inner["properties"]["color"]["type"] == "string"
+    @test inner["properties"]["color"]["description"] == "The color"
+    # field without enum annotation should NOT have "enum" key
+    @test !haskey(inner["properties"]["size"], "enum")
+end
+
+@testset "Enum annotation on field (OPENAI_TOOLS)" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.EnumFieldAnnotated, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    inner = json_schema["parameters"]
+    @test inner["properties"]["color"]["enum"] == ["red", "green", "blue"]
+    @test inner["properties"]["color"]["type"] == "string"
+    @test !haskey(inner["properties"]["size"], "enum")
+end
+
+@testset "Enum annotation on field (STANDARD)" begin
+    # In STANDARD mode the enum annotation is NOT emitted (only OpenAI modes add it)
+    json_schema = DescribedTypes.schema(EdgeTestTypes.EnumFieldAnnotated)
+    @test !haskey(json_schema["properties"]["color"], "enum")
+    @test json_schema["properties"]["color"]["type"] == "string"
+end
+
+# --- Optional nested struct + references + OpenAI (anyOf branch) ---
+
+@testset "Optional nested field (STANDARD)" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.OptionalNestedSchema)
+    @test json_schema["required"] == ["label"]
+    @test json_schema["properties"]["child"]["type"] == "object"
+    @test json_schema["properties"]["child"]["properties"]["flag"]["type"] == "boolean"
+
+    test_json_schema_validation(json_schema, EdgeTestTypes.OptionalNestedSchema("a", nothing))
+    test_json_schema_validation(json_schema, EdgeTestTypes.OptionalNestedSchema("a", EdgeTestTypes.BooleanSchema(true, "b")))
+end
+
+@testset "Optional nested field (OPENAI)" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.OptionalNestedSchema, llm_adapter=DescribedTypes.OPENAI)
+    inner = json_schema["schema"]
+    # OpenAI mode: optional fields become required with ["type", "null"] or anyOf
+    @test "child" in inner["required"]
+    @test "label" in inner["required"]
+    # child should have type = ["object", "null"] or similar
+    child_prop = inner["properties"]["child"]
+    if haskey(child_prop, "type")
+        @test child_prop["type"] == ["object", "null"] || "null" in child_prop["type"]
+    end
+end
+
+@testset "Optional nested field + references (OPENAI) — anyOf branch" begin
+    json_schema = DescribedTypes.schema(
+        EdgeTestTypes.OptionalNestedSchema,
+        llm_adapter=DescribedTypes.OPENAI,
+        use_references=true,
+    )
+    inner = json_schema["schema"]
+    child_prop = inner["properties"]["child"]
+    # Should use "anyOf" with a $ref and a null type
+    @test haskey(child_prop, "anyOf")
+    any_of = child_prop["anyOf"]
+    @test length(any_of) == 2
+    ref_entry = filter(x -> haskey(x, "\$ref"), any_of)
+    null_entry = filter(x -> get(x, "type", nothing) == "null", any_of)
+    @test length(ref_entry) == 1
+    @test length(null_entry) == 1
+    @test haskey(child_prop, "description")
+end
+
+@testset "Optional nested field + references (OPENAI_TOOLS) — anyOf branch" begin
+    json_schema = DescribedTypes.schema(
+        EdgeTestTypes.OptionalNestedSchema,
+        llm_adapter=DescribedTypes.OPENAI_TOOLS,
+        use_references=true,
+    )
+    inner = json_schema["parameters"]
+    child_prop = inner["properties"]["child"]
+    @test haskey(child_prop, "anyOf")
+end
+
+# --- use_references + OpenAI modes ---
+
+@testset "References with OPENAI mode" begin
+    json_schema = DescribedTypes.schema(
+        TestTypes.DoubleNestedSchema,
+        llm_adapter=DescribedTypes.OPENAI,
+        use_references=true,
+    )
+    inner = json_schema["schema"]
+    @test haskey(inner, "\$defs")
+    @test inner["additionalProperties"] == false
+    # Nested fields should use $ref
+    @test haskey(inner["properties"]["arrays"], "\$ref")
+end
+
+@testset "References with OPENAI_TOOLS mode" begin
+    json_schema = DescribedTypes.schema(
+        TestTypes.DoubleNestedSchema,
+        llm_adapter=DescribedTypes.OPENAI_TOOLS,
+        use_references=true,
+    )
+    inner = json_schema["parameters"]
+    @test haskey(inner, "\$defs")
+    @test inner["additionalProperties"] == false
+    @test haskey(inner["properties"]["nested"], "\$ref")
+end
+
+# --- OPENAI_TOOLS with nested/array types ---
+
+@testset "Nested Structs OPENAI_TOOLS" begin
+    json_schema = DescribedTypes.schema(TestTypes.NestedSchema, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    @test json_schema["type"] == "function"
+    inner = json_schema["parameters"]
+    @test inner["type"] == "object"
+    @test inner["additionalProperties"] == false
+    @test "int" in inner["required"]
+    @test "optional" in inner["required"]
+    @test "enum" in inner["required"]
+    # nested object should also have additionalProperties: false
+    @test inner["properties"]["optional"]["additionalProperties"] == false
+end
+
+@testset "Arrays OPENAI_TOOLS" begin
+    json_schema = DescribedTypes.schema(TestTypes.ArraySchema, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    inner = json_schema["parameters"]
+    @test inner["properties"]["integers"]["type"] == "array"
+    @test inner["properties"]["integers"]["items"]["type"] == "integer"
+    @test inner["properties"]["types"]["type"] == "array"
+    @test inner["properties"]["types"]["items"]["type"] == "object"
+end
+
+# --- _gather_data_types edge cases ---
+
+@testset "_gather_data_types edge cases" begin
+    # Type with no nested structs should return empty set
+    types = DescribedTypes._gather_data_types(TestTypes.BasicSchema)
+    @test isempty(types)
+
+    # OptionalNestedSchema has BooleanSchema via Union{Nothing, BooleanSchema}
+    types = DescribedTypes._gather_data_types(EdgeTestTypes.OptionalNestedSchema)
+    @test EdgeTestTypes.BooleanSchema in types
+
+    # MultiNestedSchema: array of OptionalNestedSchema + BooleanSchema
+    types = DescribedTypes._gather_data_types(EdgeTestTypes.MultiNestedSchema)
+    @test EdgeTestTypes.OptionalNestedSchema in types
+    @test EdgeTestTypes.BooleanSchema in types
+end
+
+# --- dict_type parameter ---
+
+@testset "dict_type=Dict" begin
+    json_schema = DescribedTypes.schema(TestTypes.BasicSchema, dict_type=Dict)
+    @test json_schema isa Dict{String,Any}
+    @test json_schema["type"] == "object"
+
+    json_schema2 = DescribedTypes.schema(TestTypes.BasicSchema, dict_type=Dict, llm_adapter=DescribedTypes.OPENAI)
+    @test json_schema2 isa Dict{String,Any}
+    @test json_schema2["schema"] isa Dict{String,Any}
+end
+
+# --- compare_dicts edge cases ---
+
+@testset "compare_dicts utility" begin
+    d1 = JSON.Object("a" => 1, "b" => 2)
+    d2 = JSON.Object("a" => 1, "b" => 2)
+    @test TestTypes.compare_dicts(d1, d2) === nothing
+
+    # different value
+    d3 = JSON.Object("a" => 1, "b" => 3)
+    res = TestTypes.compare_dicts(d1, d3)
+    @test res !== nothing
+    @test res[1] == "b"
+
+    # missing key in d2
+    d4 = JSON.Object("a" => 1, "c" => 2)
+    res = TestTypes.compare_dicts(d1, d4)
+    @test res !== nothing
+
+    # nested dict comparison
+    d5 = JSON.Object("inner" => JSON.Object("x" => 1))
+    d6 = JSON.Object("inner" => JSON.Object("x" => 2))
+    res = TestTypes.compare_dicts(d5, d6)
+    @test res !== nothing
+    @test res[1] == "x"
+
+    # different lengths
+    d7 = JSON.Object("a" => 1)
+    @test_throws ArgumentError TestTypes.compare_dicts(d1, d7)
+
+    # different types
+    @test_throws ArgumentError TestTypes.compare_dicts(d1, Dict("a" => 1, "b" => 2))
+
+    # key in d2 missing from d1
+    d8 = JSON.Object("a" => 1, "z" => 9)
+    res = TestTypes.compare_dicts(d1, d8)
+    @test res !== nothing
+end
+
+# --- SchemaSettings defaults ---
+
+@testset "SchemaSettings defaults" begin
+    s = DescribedTypes.SchemaSettings()
+    @test s.toplevel == true
+    @test s.use_references == false
+    @test isempty(s.reference_types)
+    @test s.llm_adapter == DescribedTypes.STANDARD
+    @test s.dict_type == JSON.Object
+end
+
+# --- JSON round-trip validation (serialize → validate) for edge types ---
+
+@testset "JSON validation for edge types" begin
+    for (T, instance) in [
+        (EdgeTestTypes.BooleanSchema, EdgeTestTypes.BooleanSchema(true, "x")),
+        (EdgeTestTypes.UnannotatedSchema, EdgeTestTypes.UnannotatedSchema(42, "hello")),
+        (EdgeTestTypes.EnumFieldAnnotated, EdgeTestTypes.EnumFieldAnnotated("red", 5)),
+        (EdgeTestTypes.OptionalNestedSchema, EdgeTestTypes.OptionalNestedSchema("lbl", nothing)),
+        (EdgeTestTypes.OptionalNestedSchema, EdgeTestTypes.OptionalNestedSchema("lbl", EdgeTestTypes.BooleanSchema(false, "c"))),
+    ]
+        json_schema = DescribedTypes.schema(T)
+        test_json_schema_validation(json_schema, instance)
+    end
+end
