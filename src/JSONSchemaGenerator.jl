@@ -4,23 +4,49 @@
 
 # --- Julia type → JSON type mapping ---
 
-_json_type(::Type) = :object
-_json_type(::Type{<:AbstractArray}) = :array
-_json_type(::Type{Bool}) = :boolean
-_json_type(::Type{<:Integer}) = :integer
-_json_type(::Type{<:Real}) = :number
-_json_type(::Type{Nothing}) = :null
-_json_type(::Type{Missing}) = :null
-_json_type(::Type{<:Enum}) = :enum
-_json_type(::Type{<:AbstractString}) = :string
+function _json_type(::Type)
+    return :object
+end
+function _json_type(::Type{<:AbstractArray})
+    return :array
+end
+function _json_type(::Type{Bool})
+    return :boolean
+end
+function _json_type(::Type{<:Integer})
+    return :integer
+end
+function _json_type(::Type{<:Real})
+    return :number
+end
+function _json_type(::Type{Nothing})
+    return :null
+end
+function _json_type(::Type{Missing})
+    return :null
+end
+function _json_type(::Type{<:Enum})
+    return :enum
+end
+function _json_type(::Type{<:AbstractString})
+    return :string
+end
 
 # --- Union{Nothing, T} detection ---
 
-_is_nothing_union(::Type) = false
-_is_nothing_union(::Type{Nothing}) = false
-_is_nothing_union(::Type{Union{Nothing,T}}) where {T} = true
+function _is_nothing_union(::Type)
+    return false
+end
+function _is_nothing_union(::Type{Nothing})
+    return false
+end
+function _is_nothing_union(::Type{Union{Nothing,T}}) where {T}
+    return true
+end
 
-_get_optional_type(::Type{Union{Nothing,T}}) where {T} = T
+function _get_optional_type(::Type{Union{Nothing,T}}) where {T}
+    return T
+end
 
 # --- Schema generation settings ---
 
@@ -122,8 +148,6 @@ function schema(
         )
     elseif settings.llm_adapter == GEMINI
         return d # TODO: implement GEMINI-specific wrapping
-    else
-        throw(ArgumentError("Unsupported LLM adapter: $(settings.llm_adapter)"))
     end
 end
 
