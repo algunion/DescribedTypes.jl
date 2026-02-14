@@ -3,48 +3,39 @@ if isdefined(@__MODULE__, :LanguageServer)
 end
 
 using DescribedTypes
-using OrderedCollections: OrderedDict
 using JSONSchema
 using JSON
-using JSON3
-using StructTypes
 using ArgCheck
 using Test
 
-@testset "DescribedTypes.jl" begin
-    # Write your tests here.
-end
-
 module TestTypes
-using StructTypes
 using DescribedTypes
-using OrderedCollections: OrderedDict
 using ArgCheck
 
 # this is more complex than simple equality: the function reports first key/value pair that differs
 # also the recursive comparison is implemented
 # important to return the key/value pair that differs (if any) for better debugging
 function compare_dicts(d1, d2; pass=0)
-    #@info "Pass $pass"
-    @argcheck length(d1) == length(d2) "Dicts have different lengths. d1 keys: $(keys(d1)), d2 keys: $(keys(d2))"
     @argcheck typeof(d1) == typeof(d2) "Inputs have different types"
-    if d1 == d2
-        return nothing
-    end
+    @argcheck length(d1) == length(d2) "Dicts have different lengths. d1 keys: $(keys(d1)), d2 keys: $(keys(d2))"
+    d1 == d2 && return nothing
     for (k, v) in d1
-        if haskey(d2, k)
-            if typeof(v) <: AbstractDict
-                res = compare_dicts(v, d2[k], pass=pass + 1)
-                if res !== nothing
-                    return res
-                end
-            elseif v != d2[k]
-                return (k, v, d2[k])
-            end
-        else
+        if !haskey(d2, k)
             return (k, v, nothing)
+        elseif v isa AbstractDict
+            res = compare_dicts(v, d2[k]; pass=pass + 1)
+            res !== nothing && return res
+        elseif v != d2[k]
+            return (k, v, d2[k])
         end
     end
+    # Check for keys in d2 that are missing from d1
+    for k in keys(d2)
+        if !haskey(d1, k)
+            return (k, nothing, d2[k])
+        end
+    end
+    return nothing
 end
 
 
@@ -53,8 +44,7 @@ struct BasicSchema
     float::Float64
     string::String
 end
-StructTypes.StructType(::Type{BasicSchema}) = StructTypes.Struct()
-DescribedTypes.annotate(::Type{BasicSchema}) = DescribedTypes.Annotation(name="BasicSchema", description="A schema containing an integer, float, and string field.", markdown="Basic schema", parameters=OrderedDict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :float => DescribedTypes.Annotation(name="float", description="A float field"), :string => DescribedTypes.Annotation(name="string", description="A string field")))
+DescribedTypes.annotate(::Type{BasicSchema}) = DescribedTypes.Annotation(name="BasicSchema", description="A schema containing an integer, float, and string field.", markdown="Basic schema", parameters=Dict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :float => DescribedTypes.Annotation(name="float", description="A float field"), :string => DescribedTypes.Annotation(name="string", description="A string field")))
 
 @enum Fruit begin
     apple = 1
@@ -65,25 +55,21 @@ end
 struct EnumeratedSchema
     fruit::Fruit
 end
-StructTypes.StructType(::Type{EnumeratedSchema}) = StructTypes.Struct()
-DescribedTypes.annotate(::Type{EnumeratedSchema}) = DescribedTypes.Annotation(name="EnumeratedSchema", description="A schema containing a single Fruit field.", markdown="Fruit type", parameters=OrderedDict(:fruit => DescribedTypes.Annotation(name="fruit", description="Fruit type")))
+DescribedTypes.annotate(::Type{EnumeratedSchema}) = DescribedTypes.Annotation(name="EnumeratedSchema", description="A schema containing a single Fruit field.", markdown="Fruit type", parameters=Dict(:fruit => DescribedTypes.Annotation(name="fruit", description="Fruit type")))
 
 
 struct OptionalFieldSchema
     int::Int
     optional::Union{Nothing,String}
 end
-StructTypes.StructType(::Type{OptionalFieldSchema}) = StructTypes.Struct()
-StructTypes.omitempties(::Type{OptionalFieldSchema}) = (:optional,)
-DescribedTypes.annotate(::Type{OptionalFieldSchema}) = DescribedTypes.Annotation(name="OptionalFieldSchema", description="A schema containing an optional field.", markdown="Optional field", parameters=OrderedDict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :optional => DescribedTypes.Annotation(name="optional", description="An optional string field")))
+DescribedTypes.annotate(::Type{OptionalFieldSchema}) = DescribedTypes.Annotation(name="OptionalFieldSchema", description="A schema containing an optional field.", markdown="Optional field", parameters=Dict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :optional => DescribedTypes.Annotation(name="optional", description="An optional string field")))
 
 
 struct ArraySchema
     integers::Vector{Int64}
     types::Vector{OptionalFieldSchema}
 end
-StructTypes.StructType(::Type{ArraySchema}) = StructTypes.Struct()
-DescribedTypes.annotate(::Type{ArraySchema}) = DescribedTypes.Annotation(name="ArraySchema", description="A schema containing an array of integers and an array of OptionalFieldSchema.", markdown="Array schema", parameters=OrderedDict(:integers => DescribedTypes.Annotation(name="integers", description="An array of integers"), :types => DescribedTypes.Annotation(name="types", description="An array of OptionalFieldSchema")))
+DescribedTypes.annotate(::Type{ArraySchema}) = DescribedTypes.Annotation(name="ArraySchema", description="A schema containing an array of integers and an array of OptionalFieldSchema.", markdown="Array schema", parameters=Dict(:integers => DescribedTypes.Annotation(name="integers", description="An array of integers"), :types => DescribedTypes.Annotation(name="types", description="An array of OptionalFieldSchema")))
 
 function ArraySchema()
     optional_array = [
@@ -98,8 +84,7 @@ struct NestedSchema
     optional::OptionalFieldSchema
     enum::EnumeratedSchema
 end
-StructTypes.StructType(::Type{NestedSchema}) = StructTypes.Struct()
-DescribedTypes.annotate(::Type{NestedSchema}) = DescribedTypes.Annotation(name="NestedSchema", description="A schema containing an integer, an OptionalFieldSchema, and an EnumeratedSchema.", markdown="Nested schema", parameters=OrderedDict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :optional => DescribedTypes.Annotation(name="optional", description="An optional field"), :enum => DescribedTypes.Annotation(name="enum", description="An enumerated field")))
+DescribedTypes.annotate(::Type{NestedSchema}) = DescribedTypes.Annotation(name="NestedSchema", description="A schema containing an integer, an OptionalFieldSchema, and an EnumeratedSchema.", markdown="Nested schema", parameters=Dict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :optional => DescribedTypes.Annotation(name="optional", description="An optional field"), :enum => DescribedTypes.Annotation(name="enum", description="An enumerated field")))
 
 function NestedSchema()
     return NestedSchema(
@@ -115,8 +100,7 @@ struct DoubleNestedSchema
     enum::EnumeratedSchema
     nested::NestedSchema
 end
-StructTypes.StructType(::Type{DoubleNestedSchema}) = StructTypes.Struct()
-DescribedTypes.annotate(::Type{DoubleNestedSchema}) = DescribedTypes.Annotation(name="DoubleNestedSchema", description="A schema containing an integer, an ArraySchema, an EnumeratedSchema, and a NestedSchema.", markdown="Double nested schema", parameters=OrderedDict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :arrays => DescribedTypes.Annotation(name="arrays", description="An array of ArraySchema"), :enum => DescribedTypes.Annotation(name="enum", description="An enumerated field"), :nested => DescribedTypes.Annotation(name="nested", description="A nested field")))
+DescribedTypes.annotate(::Type{DoubleNestedSchema}) = DescribedTypes.Annotation(name="DoubleNestedSchema", description="A schema containing an integer, an ArraySchema, an EnumeratedSchema, and a NestedSchema.", markdown="Double nested schema", parameters=Dict(:int => DescribedTypes.Annotation(name="int", description="An integer field"), :arrays => DescribedTypes.Annotation(name="arrays", description="An array of ArraySchema"), :enum => DescribedTypes.Annotation(name="enum", description="An enumerated field"), :nested => DescribedTypes.Annotation(name="nested", description="A nested field")))
 
 function DoubleNestedSchema()
     return DoubleNestedSchema(
@@ -135,7 +119,7 @@ end
 
 function test_json_schema_validation(json_schema, obj)
     my_schema = JSONSchema.Schema(json_schema) # make a schema
-    json_string = JSON3.write(obj) # we can write the schema to a JSON string
+    json_string = JSON.json(obj; omit_null=true) # omit_null replaces StructTypes.omitempties
     @test JSONSchema.validate(my_schema, JSON.parse(json_string)) === nothing # validation is OK
 end
 
@@ -294,8 +278,6 @@ end
 
     @test double_nested_schema["schema"]["properties"]["nested"] == nested_schema["schema"]
 
-    @info "Comparison Result: " TestTypes.compare_dicts(double_nested_schema["schema"]["properties"]["nested"], nested_schema["schema"])
-
     test_json_schema_validation(TestTypes.DoubleNestedSchema())
 
     # @info "Nested Structs Annotated JSON 1"
@@ -305,7 +287,7 @@ end
     # (JSON3.pretty(nested_schema["schema"]["properties"]["optional"]))
 end
 
-@testset "StructTypes.DataType gathering" begin
+@testset "DataType gathering" begin
     types = DescribedTypes._gather_data_types(TestTypes.NestedSchema)
     expected_types = [
         TestTypes.OptionalFieldSchema
@@ -398,4 +380,63 @@ end
     json_schema = DescribedTypes.schema(TestTypes.NestedSchema, use_references=true, dict_type=Dict)
     #@info json_schema
     #test_json_schema_validation(json_schema, TestTypes.NestedSchema())
+end
+
+# --- OPENAI_TOOLS tests (function-calling wrapper with "parameters" key) ---
+
+@testset "Basic Types OPENAI_TOOLS" begin
+    json_schema = DescribedTypes.schema(TestTypes.BasicSchema, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+
+    # Top-level wrapper uses "parameters" (not "schema")
+    @test json_schema["type"] == "function"
+    @test json_schema["name"] == "BasicSchema"
+    @test json_schema["strict"] == true
+    @test haskey(json_schema, "parameters")
+    @test !haskey(json_schema, "schema")
+
+    inner = json_schema["parameters"]
+    @test inner["type"] == "object"
+    object_properties = ["int", "float", "string"]
+    @test all(x in object_properties for x in inner["required"])
+    @test all(x in object_properties for x in keys(inner["properties"]))
+
+    @test inner["properties"]["int"]["type"] == "integer"
+    @test inner["properties"]["float"]["type"] == "number"
+    @test inner["properties"]["string"]["type"] == "string"
+    @test inner["additionalProperties"] == false
+end
+
+@testset "Optional Fields OPENAI_TOOLS" begin
+    json_schema = DescribedTypes.schema(TestTypes.OptionalFieldSchema, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+
+    inner = json_schema["parameters"]
+    # OpenAI tools mode requires all fields, optional uses ["type", "null"]
+    @test ("optional" in inner["required"])
+    @test inner["required"] == ["int", "optional"]
+    @test inner["properties"]["optional"]["type"] == ["string", "null"]
+    @test inner["additionalProperties"] == false
+end
+
+@testset "Enumerators OPENAI_TOOLS" begin
+    json_schema = DescribedTypes.schema(TestTypes.EnumeratedSchema, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+
+    @test json_schema["type"] == "function"
+    @test haskey(json_schema, "parameters")
+    inner = json_schema["parameters"]
+    enum_instances = ["apple", "orange"]
+    fruit_json_enum = inner["properties"]["fruit"]["enum"]
+    @test all(x in fruit_json_enum for x in enum_instances)
+end
+
+@testset "OPENAI vs OPENAI_TOOLS inner schema parity" begin
+    # The inner schema content should be identical; only the wrapper key differs
+    for T in [TestTypes.BasicSchema, TestTypes.OptionalFieldSchema, TestTypes.EnumeratedSchema]
+        openai_schema = DescribedTypes.schema(T, llm_adapter=DescribedTypes.OPENAI)
+        tools_schema = DescribedTypes.schema(T, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+
+        @test openai_schema["schema"] == tools_schema["parameters"]
+        @test openai_schema["name"] == tools_schema["name"]
+        @test openai_schema["description"] == tools_schema["description"]
+        @test openai_schema["strict"] == tools_schema["strict"]
+    end
 end
