@@ -171,6 +171,36 @@ print(JSON.json(schema(Palette), 2))</code></pre><pre class="documenter-example-
   &quot;required&quot;: [
     &quot;primary&quot;
   ]
+}</code></pre><p>You can also annotate the enum field with a description — the enum values are still inferred from the Julia type, so you don&#39;t need to repeat them:</p><pre><code class="language-julia hljs">DescribedTypes.annotate(::Type{Palette}) = Annotation(
+    name=&quot;Palette&quot;,
+    description=&quot;A color palette.&quot;,
+    parameters=Dict(
+        :primary =&gt; Annotation(name=&quot;primary&quot;, description=&quot;The primary color&quot;),
+    ),
+)
+
+print(JSON.json(schema(Palette, llm_adapter=OPENAI), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;name&quot;: &quot;Palette&quot;,
+  &quot;description&quot;: &quot;A color palette.&quot;,
+  &quot;strict&quot;: true,
+  &quot;schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;primary&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;enum&quot;: [
+          &quot;red&quot;,
+          &quot;green&quot;,
+          &quot;blue&quot;
+        ],
+        &quot;description&quot;: &quot;The primary color&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;primary&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
 }</code></pre><h3 id="2.-String-fields-with-enum-annotations"><a class="docs-heading-anchor" href="#2.-String-fields-with-enum-annotations">2. String fields with enum annotations</a><a id="2.-String-fields-with-enum-annotations-1"></a><a class="docs-heading-anchor-permalink" href="#2.-String-fields-with-enum-annotations" title="Permalink"></a></h3><p>Constrain allowed values via the <code>enum</code> keyword in <a href="../api/#DescribedTypes.Annotation"><code>Annotation</code></a>:</p><pre><code class="language-julia hljs">struct Shirt
     color::String
 end
@@ -274,4 +304,4 @@ print(JSON.json(schema(Person), 2))</code></pre><pre class="documenter-example-o
     }
   }
 }</code></pre><h2 id="Custom-Dict-Type"><a class="docs-heading-anchor" href="#Custom-Dict-Type">Custom Dict Type</a><a id="Custom-Dict-Type-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Dict-Type" title="Permalink"></a></h2><p>By default schemas use <code>JSON.Object</code> (preserves insertion order). You can switch to <code>Dict</code> if order doesn&#39;t matter:</p><pre><code class="language-julia hljs">d = schema(Person, dict_type=Dict)
-typeof(d)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{String, Any}</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Monday 16 February 2026 08:21">Monday 16 February 2026</span>. Using Julia version 1.11.9.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+typeof(d)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{String, Any}</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Monday 16 February 2026 08:30">Monday 16 February 2026</span>. Using Julia version 1.11.9.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
