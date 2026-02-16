@@ -6,8 +6,9 @@ Every type that you want to generate a schema for needs an [`annotate`](@ref) me
 that returns an [`Annotation`](@ref). The annotation carries a name, description,
 and per-field metadata.
 
-```julia
+```@example guide
 using DescribedTypes
+using JSON
 
 struct Weather
     location::String
@@ -24,6 +25,7 @@ DescribedTypes.annotate(::Type{Weather}) = Annotation(
         :unit        => Annotation(name="unit", description="Unit of measurement", enum=["celsius", "fahrenheit"]),
     ),
 )
+nothing # hide
 ```
 
 If you don't define `annotate` for a type, a default annotation is generated
@@ -31,20 +33,27 @@ using the type name, with generic field descriptions.
 
 ## Generating Schemas
 
-Use [`schema`](@ref) to produce a JSON Schema dictionary:
+Use [`schema`](@ref) to produce a JSON Schema dictionary.
 
-```julia
-using JSON
+**Plain JSON Schema (`STANDARD`):**
 
-# Plain JSON Schema
+```@example guide
 d = schema(Weather)
-println(JSON.json(d, 2))
+print(JSON.json(d, 2))
+```
 
-# OpenAI response-format wrapper
+**OpenAI response-format wrapper (`OPENAI`):**
+
+```@example guide
 d = schema(Weather, llm_adapter=OPENAI)
+print(JSON.json(d, 2))
+```
 
-# OpenAI function/tool-calling wrapper
+**OpenAI function/tool-calling wrapper (`OPENAI_TOOLS`):**
+
+```@example guide
 d = schema(Weather, llm_adapter=OPENAI_TOOLS)
+print(JSON.json(d, 2))
 ```
 
 ## Optional Fields
@@ -55,7 +64,7 @@ Fields typed as `Union{Nothing, T}` are treated as optional:
 - In `OPENAI` / `OPENAI_TOOLS` modes all fields remain required (per OpenAI spec),
   but optional fields use `["type", "null"]` to allow a `null` value.
 
-```julia
+```@example guide
 struct Query
     text::String
     max_tokens::Union{Nothing, Int}
@@ -69,25 +78,44 @@ DescribedTypes.annotate(::Type{Query}) = Annotation(
         :max_tokens => Annotation(name="max_tokens", description="Optional token limit"),
     ),
 )
+nothing # hide
+```
+
+**Standard schema (optional fields omitted from `required`):**
+
+```@example guide
+print(JSON.json(schema(Query), 2))
+```
+
+**OpenAI schema (optional fields use `["type", "null"]`):**
+
+```@example guide
+print(JSON.json(schema(Query, llm_adapter=OPENAI), 2))
 ```
 
 ## Enum Fields
 
 There are two ways to represent enums:
 
-1. **Julia `@enum` types** — automatically serialised to their string representations:
+### 1. Julia `@enum` types
 
-```julia
+Automatically serialised to their string representations:
+
+```@example guide
 @enum Color red green blue
 
 struct Palette
     primary::Color
 end
+
+print(JSON.json(schema(Palette), 2))
 ```
 
-2. **String fields with enum annotations** — constrain allowed values via the `enum` keyword in [`Annotation`](@ref):
+### 2. String fields with enum annotations
 
-```julia
+Constrain allowed values via the `enum` keyword in [`Annotation`](@ref):
+
+```@example guide
 struct Shirt
     color::String
 end
@@ -99,6 +127,8 @@ DescribedTypes.annotate(::Type{Shirt}) = Annotation(
         :color => Annotation(name="color", description="Shirt color", enum=["red", "green", "blue"]),
     ),
 )
+
+print(JSON.json(schema(Shirt, llm_adapter=OPENAI), 2))
 ```
 
 !!! note
@@ -109,7 +139,7 @@ DescribedTypes.annotate(::Type{Shirt}) = Annotation(
 
 Nested structs are expanded inline by default:
 
-```julia
+```@example guide
 struct Address
     street::String
     city::String
@@ -119,6 +149,8 @@ struct Person
     name::String
     address::Address
 end
+
+print(JSON.json(schema(Person), 2))
 ```
 
 ### Schema References
@@ -126,8 +158,8 @@ end
 For deeply nested or repeated types, pass `use_references=true` to factor
 shared types into `$defs` and reference them via `$ref`:
 
-```julia
-d = schema(Person, use_references=true)
+```@example guide
+print(JSON.json(schema(Person, use_references=true), 2))
 ```
 
 ## Custom Dict Type
@@ -135,6 +167,7 @@ d = schema(Person, use_references=true)
 By default schemas use `JSON.Object` (preserves insertion order). You can
 switch to `Dict` if order doesn't matter:
 
-```julia
+```@example guide
 d = schema(Person, dict_type=Dict)
+typeof(d)
 ```

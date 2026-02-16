@@ -30,7 +30,7 @@ pkg> add DescribedTypes
 
 ## Quick Start
 
-```julia
+```@example quickstart
 using DescribedTypes
 using JSON
 
@@ -50,7 +50,7 @@ DescribedTypes.annotate(::Type{Person}) = Annotation(
 
 # OpenAI structured-output format
 schema_dict = schema(Person, llm_adapter=OPENAI)
-println(JSON.json(schema_dict, 2))
+print(JSON.json(schema_dict, 2))
 ```
 
 See the [Guide](@ref guide) for more detailed usage and examples.
