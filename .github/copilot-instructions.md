@@ -21,6 +21,10 @@ explicitly as a hypothesis.
 
 ------------------------------------------------------------------------
 
+## Main Directive
+
+You don't try to make tests pass. You try to write sensible tests that challenge assumptions. You try to write code that resists falsification - and for that you need to write harsh tests that will fail if your assumptions are wrong. Then you fix the code until it passes the tests.
+
 ## Julia-First Operational Mode
 
 Julia is a live laboratory. Use it.

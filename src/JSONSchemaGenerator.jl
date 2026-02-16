@@ -160,8 +160,24 @@ _make_dict(settings::SchemaSettings, pairs::Pair{String}...) =
 _make_dict(settings::SchemaSettings, pairs::AbstractVector{<:Pair}) =
     settings.dict_type{String,Any}(pairs)
 
+function _validate_annotation_fields(julia_type::Type, annotation::Annotation)
+    params = annotation.parameters
+    params === nothing && return nothing
+    actual_fields = fieldnames(julia_type)
+    annotated_fields = keys(params)
+    extra = setdiff(annotated_fields, actual_fields)
+    if !isempty(extra)
+        throw(ArgumentError(
+            "Annotation for $(julia_type) references fields that do not exist on the type: $(join(extra, ", ")). " *
+            "Actual fields: $(join(actual_fields, ", "))."
+        ))
+    end
+    return nothing
+end
+
 function _generate_json_object(julia_type::Type, settings::SchemaSettings)
     annotation = annotate(julia_type)
+    _validate_annotation_fields(julia_type, annotation)
 
     is_top_level = settings.toplevel
     if is_top_level

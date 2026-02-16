@@ -877,3 +877,63 @@ end
         test_json_schema_validation(json_schema, instance)
     end
 end
+
+# --- Annotation field validation ---
+
+module InvalidAnnotationTypes
+using DescribedTypes
+
+struct SimpleStruct
+    x::Int
+    y::String
+end
+
+# Annotation references a field `z` that does not exist on SimpleStruct
+DescribedTypes.annotate(::Type{SimpleStruct}) = DescribedTypes.Annotation(
+    name="SimpleStruct",
+    description="A struct with x and y.",
+    parameters=Dict(
+        :x => DescribedTypes.Annotation(name="x", description="An integer"),
+        :z => DescribedTypes.Annotation(name="z", description="Does not exist"),
+    )
+)
+
+struct AllBogusFields
+    a::Int
+end
+
+# Annotation has only non-existent fields
+DescribedTypes.annotate(::Type{AllBogusFields}) = DescribedTypes.Annotation(
+    name="AllBogusFields",
+    description="One real field, annotation mentions none of them.",
+    parameters=Dict(
+        :foo => DescribedTypes.Annotation(name="foo", description="Nope"),
+        :bar => DescribedTypes.Annotation(name="bar", description="Also nope"),
+    )
+)
+
+struct CorrectlyAnnotated
+    a::Int
+    b::String
+end
+
+DescribedTypes.annotate(::Type{CorrectlyAnnotated}) = DescribedTypes.Annotation(
+    name="CorrectlyAnnotated",
+    description="All annotations match real fields.",
+    parameters=Dict(
+        :a => DescribedTypes.Annotation(name="a", description="An integer"),
+        :b => DescribedTypes.Annotation(name="b", description="A string"),
+    )
+)
+end
+
+@testset "Annotation field validation" begin
+    # Extra field in annotation → ArgumentError
+    @test_throws ArgumentError DescribedTypes.schema(InvalidAnnotationTypes.SimpleStruct)
+    @test_throws ArgumentError DescribedTypes.schema(InvalidAnnotationTypes.AllBogusFields)
+
+    # Correctly annotated → no error
+    json_schema = DescribedTypes.schema(InvalidAnnotationTypes.CorrectlyAnnotated)
+    @test json_schema["type"] == "object"
+    @test Set(json_schema["required"]) == Set(["a", "b"])
+end
