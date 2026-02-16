@@ -111,6 +111,21 @@ end
 print(JSON.json(schema(Palette), 2))
 ```
 
+You can also annotate the enum field with a description — the enum values are
+still inferred from the Julia type, so you don't need to repeat them:
+
+```@example guide
+DescribedTypes.annotate(::Type{Palette}) = Annotation(
+    name="Palette",
+    description="A color palette.",
+    parameters=Dict(
+        :primary => Annotation(name="primary", description="The primary color"),
+    ),
+)
+
+print(JSON.json(schema(Palette, llm_adapter=OPENAI), 2))
+```
+
 ### 2. String fields with enum annotations
 
 Constrain allowed values via the `enum` keyword in [`Annotation`](@ref):
