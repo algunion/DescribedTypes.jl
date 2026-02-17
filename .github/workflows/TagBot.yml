@@ -12,7 +12,7 @@ permissions:
   actions: read
   contents: write
   issues: read
-  pull_requests: read
+  pull-requests: read
 
 jobs:
   TagBot:
