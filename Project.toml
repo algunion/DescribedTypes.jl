@@ -1,6 +1,6 @@
 name = "DescribedTypes"
 uuid = "8741edd9-8b82-4aab-aab4-ad85b116ccea"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["Marius Fersigan <marius.fersigan@gmail.com>"]
 
 [deps]
