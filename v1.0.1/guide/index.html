@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Guide · DescribedTypes.jl</title><meta name="title" content="Guide · DescribedTypes.jl"/><meta property="og:title" content="Guide · DescribedTypes.jl"/><meta property="twitter:title" content="Guide · DescribedTypes.jl"/><meta name="description" content="Documentation for DescribedTypes.jl."/><meta property="og:description" content="Documentation for DescribedTypes.jl."/><meta property="twitter:description" content="Documentation for DescribedTypes.jl."/><meta property="og:url" content="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><meta property="twitter:url" content="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><link rel="canonical" href="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">DescribedTypes.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Guide</a><ul class="internal"><li><a class="tocitem" href="#Annotating-Types"><span>Annotating Types</span></a></li><li><a class="tocitem" href="#Generating-Schemas"><span>Generating Schemas</span></a></li><li><a class="tocitem" href="#Optional-Fields"><span>Optional Fields</span></a></li><li><a class="tocitem" href="#Enum-Fields"><span>Enum Fields</span></a></li><li><a class="tocitem" href="#Nested-Types"><span>Nested Types</span></a></li><li><a class="tocitem" href="#Custom-Dict-Type"><span>Custom Dict Type</span></a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li><li><a class="tocitem" href="../llm/">LLM Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Guide</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Guide</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/algunion/DescribedTypes.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/algunion/DescribedTypes.jl/blob/main/docs/src/guide.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="guide"><a class="docs-heading-anchor" href="#guide">Guide</a><a id="guide-1"></a><a class="docs-heading-anchor-permalink" href="#guide" title="Permalink"></a></h1><h2 id="Annotating-Types"><a class="docs-heading-anchor" href="#Annotating-Types">Annotating Types</a><a id="Annotating-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Annotating-Types" title="Permalink"></a></h2><p>Every type that you want to generate a schema for needs an <a href="../llm/#annotate"><code>annotate</code></a> method that returns an <a href="../llm/#Annotation"><code>Annotation</code></a>. The annotation carries a name, description, and per-field metadata.</p><pre><code class="language-julia hljs">using DescribedTypes
+using JSON
+
+struct Weather
+    location::String
+    temperature::Float64
+    unit::String
+end
+
+DescribedTypes.annotate(::Type{Weather}) = Annotation(
+    name=&quot;Weather&quot;,
+    description=&quot;Current weather observation.&quot;,
+    parameters=Dict(
+        :location    =&gt; Annotation(name=&quot;location&quot;, description=&quot;City name&quot;),
+        :temperature =&gt; Annotation(name=&quot;temperature&quot;, description=&quot;Temperature value&quot;),
+        :unit        =&gt; Annotation(name=&quot;unit&quot;, description=&quot;Unit of measurement&quot;, enum=[&quot;celsius&quot;, &quot;fahrenheit&quot;]),
+    ),
+)</code></pre><p>If you don&#39;t define <code>annotate</code> for a type, a default annotation is generated using the type name, with generic field descriptions.</p><h2 id="Generating-Schemas"><a class="docs-heading-anchor" href="#Generating-Schemas">Generating Schemas</a><a id="Generating-Schemas-1"></a><a class="docs-heading-anchor-permalink" href="#Generating-Schemas" title="Permalink"></a></h2><p>Use <a href="../llm/#schema"><code>schema</code></a> to produce a JSON Schema dictionary.</p><p><strong>Plain JSON Schema (<code>STANDARD</code>):</strong></p><pre><code class="language-julia hljs">d = schema(Weather)
+print(JSON.json(d, 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;location&quot;: {
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;temperature&quot;: {
+      &quot;type&quot;: &quot;number&quot;
+    },
+    &quot;unit&quot;: {
+      &quot;type&quot;: &quot;string&quot;
+    }
+  },
+  &quot;required&quot;: [
+    &quot;location&quot;,
+    &quot;temperature&quot;,
+    &quot;unit&quot;
+  ]
+}</code></pre><p><strong>OpenAI response-format wrapper (<code>OPENAI</code>):</strong></p><pre><code class="language-julia hljs">d = schema(Weather, llm_adapter=OPENAI)
+print(JSON.json(d, 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;name&quot;: &quot;Weather&quot;,
+  &quot;description&quot;: &quot;Current weather observation.&quot;,
+  &quot;strict&quot;: true,
+  &quot;schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;location&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;City name&quot;
+      },
+      &quot;temperature&quot;: {
+        &quot;type&quot;: &quot;number&quot;,
+        &quot;description&quot;: &quot;Temperature value&quot;
+      },
+      &quot;unit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;Unit of measurement&quot;,
+        &quot;enum&quot;: [
+          &quot;celsius&quot;,
+          &quot;fahrenheit&quot;
+        ]
+      }
+    },
+    &quot;required&quot;: [
+      &quot;location&quot;,
+      &quot;temperature&quot;,
+      &quot;unit&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><p><strong>OpenAI function/tool-calling wrapper (<code>OPENAI_TOOLS</code>):</strong></p><pre><code class="language-julia hljs">d = schema(Weather, llm_adapter=OPENAI_TOOLS)
+print(JSON.json(d, 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;function&quot;,
+  &quot;name&quot;: &quot;Weather&quot;,
+  &quot;description&quot;: &quot;Current weather observation.&quot;,
+  &quot;strict&quot;: true,
+  &quot;parameters&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;location&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;City name&quot;
+      },
+      &quot;temperature&quot;: {
+        &quot;type&quot;: &quot;number&quot;,
+        &quot;description&quot;: &quot;Temperature value&quot;
+      },
+      &quot;unit&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;Unit of measurement&quot;,
+        &quot;enum&quot;: [
+          &quot;celsius&quot;,
+          &quot;fahrenheit&quot;
+        ]
+      }
+    },
+    &quot;required&quot;: [
+      &quot;location&quot;,
+      &quot;temperature&quot;,
+      &quot;unit&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><h2 id="Optional-Fields"><a class="docs-heading-anchor" href="#Optional-Fields">Optional Fields</a><a id="Optional-Fields-1"></a><a class="docs-heading-anchor-permalink" href="#Optional-Fields" title="Permalink"></a></h2><p>Fields typed as <code>Union{Nothing, T}</code> are treated as optional:</p><ul><li>In <code>STANDARD</code> mode they are omitted from the <code>&quot;required&quot;</code> array.</li><li>In <code>OPENAI</code> / <code>OPENAI_TOOLS</code> modes all fields remain required (per OpenAI spec), but optional fields use <code>[&quot;type&quot;, &quot;null&quot;]</code> to allow a <code>null</code> value.</li></ul><pre><code class="language-julia hljs">struct Query
+    text::String
+    max_tokens::Union{Nothing, Int}
+end
+
+DescribedTypes.annotate(::Type{Query}) = Annotation(
+    name=&quot;Query&quot;,
+    description=&quot;A search query.&quot;,
+    parameters=Dict(
+        :text       =&gt; Annotation(name=&quot;text&quot;, description=&quot;The query string&quot;),
+        :max_tokens =&gt; Annotation(name=&quot;max_tokens&quot;, description=&quot;Optional token limit&quot;),
+    ),
+)</code></pre><p><strong>Standard schema (optional fields omitted from <code>required</code>):</strong></p><pre><code class="language-julia hljs">print(JSON.json(schema(Query), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;text&quot;: {
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;max_tokens&quot;: {
+      &quot;type&quot;: &quot;integer&quot;
+    }
+  },
+  &quot;required&quot;: [
+    &quot;text&quot;
+  ]
+}</code></pre><p><strong>OpenAI schema (optional fields use <code>[&quot;type&quot;, &quot;null&quot;]</code>):</strong></p><pre><code class="language-julia hljs">print(JSON.json(schema(Query, llm_adapter=OPENAI), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;name&quot;: &quot;Query&quot;,
+  &quot;description&quot;: &quot;A search query.&quot;,
+  &quot;strict&quot;: true,
+  &quot;schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;text&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;The query string&quot;
+      },
+      &quot;max_tokens&quot;: {
+        &quot;type&quot;: [
+          &quot;integer&quot;,
+          &quot;null&quot;
+        ],
+        &quot;description&quot;: &quot;Optional token limit&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;text&quot;,
+      &quot;max_tokens&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><h2 id="Enum-Fields"><a class="docs-heading-anchor" href="#Enum-Fields">Enum Fields</a><a id="Enum-Fields-1"></a><a class="docs-heading-anchor-permalink" href="#Enum-Fields" title="Permalink"></a></h2><p>There are two ways to represent enums:</p><h3 id="1.-Julia-@enum-types"><a class="docs-heading-anchor" href="#1.-Julia-@enum-types">1. Julia <code>@enum</code> types</a><a id="1.-Julia-@enum-types-1"></a><a class="docs-heading-anchor-permalink" href="#1.-Julia-@enum-types" title="Permalink"></a></h3><p>Automatically serialised to their string representations:</p><pre><code class="language-julia hljs">@enum Color red green blue
+
+struct Palette
+    primary::Color
+end
+
+print(JSON.json(schema(Palette), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;primary&quot;: {
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;enum&quot;: [
+        &quot;red&quot;,
+        &quot;green&quot;,
+        &quot;blue&quot;
+      ]
+    }
+  },
+  &quot;required&quot;: [
+    &quot;primary&quot;
+  ]
+}</code></pre><p>You can also annotate the enum field with a description — the enum values are still inferred from the Julia type, so you don&#39;t need to repeat them:</p><pre><code class="language-julia hljs">DescribedTypes.annotate(::Type{Palette}) = Annotation(
+    name=&quot;Palette&quot;,
+    description=&quot;A color palette.&quot;,
+    parameters=Dict(
+        :primary =&gt; Annotation(name=&quot;primary&quot;, description=&quot;The primary color&quot;),
+    ),
+)
+
+print(JSON.json(schema(Palette, llm_adapter=OPENAI), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;name&quot;: &quot;Palette&quot;,
+  &quot;description&quot;: &quot;A color palette.&quot;,
+  &quot;strict&quot;: true,
+  &quot;schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;primary&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;enum&quot;: [
+          &quot;red&quot;,
+          &quot;green&quot;,
+          &quot;blue&quot;
+        ],
+        &quot;description&quot;: &quot;The primary color&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;primary&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><h3 id="2.-String-fields-with-enum-annotations"><a class="docs-heading-anchor" href="#2.-String-fields-with-enum-annotations">2. String fields with enum annotations</a><a id="2.-String-fields-with-enum-annotations-1"></a><a class="docs-heading-anchor-permalink" href="#2.-String-fields-with-enum-annotations" title="Permalink"></a></h3><p>Constrain allowed values via the <code>enum</code> keyword in <a href="../llm/#Annotation"><code>Annotation</code></a>:</p><pre><code class="language-julia hljs">struct Shirt
+    color::String
+end
+
+DescribedTypes.annotate(::Type{Shirt}) = Annotation(
+    name=&quot;Shirt&quot;,
+    description=&quot;A shirt.&quot;,
+    parameters=Dict(
+        :color =&gt; Annotation(name=&quot;color&quot;, description=&quot;Shirt color&quot;, enum=[&quot;red&quot;, &quot;green&quot;, &quot;blue&quot;]),
+    ),
+)
+
+print(JSON.json(schema(Shirt, llm_adapter=OPENAI), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;name&quot;: &quot;Shirt&quot;,
+  &quot;description&quot;: &quot;A shirt.&quot;,
+  &quot;strict&quot;: true,
+  &quot;schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;color&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;Shirt color&quot;,
+        &quot;enum&quot;: [
+          &quot;red&quot;,
+          &quot;green&quot;,
+          &quot;blue&quot;
+        ]
+      }
+    },
+    &quot;required&quot;: [
+      &quot;color&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><div class="admonition is-info" id="Note-d994660cd7d64f81"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-d994660cd7d64f81" title="Permalink"></a></header><div class="admonition-body"><p>The <code>enum</code> keyword in annotations only takes effect in OpenAI modes (<code>OPENAI</code> / <code>OPENAI_TOOLS</code>). In <code>STANDARD</code> mode it is ignored.</p></div></div><h2 id="Nested-Types"><a class="docs-heading-anchor" href="#Nested-Types">Nested Types</a><a id="Nested-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Nested-Types" title="Permalink"></a></h2><p>Nested structs are expanded inline by default:</p><pre><code class="language-julia hljs">struct Address
+    street::String
+    city::String
+end
+
+struct Person
+    name::String
+    address::Address
+end
+
+print(JSON.json(schema(Person), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;name&quot;: {
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;address&quot;: {
+      &quot;type&quot;: &quot;object&quot;,
+      &quot;properties&quot;: {
+        &quot;street&quot;: {
+          &quot;type&quot;: &quot;string&quot;
+        },
+        &quot;city&quot;: {
+          &quot;type&quot;: &quot;string&quot;
+        }
+      },
+      &quot;required&quot;: [
+        &quot;street&quot;,
+        &quot;city&quot;
+      ]
+    }
+  },
+  &quot;required&quot;: [
+    &quot;name&quot;,
+    &quot;address&quot;
+  ]
+}</code></pre><h3 id="Schema-References"><a class="docs-heading-anchor" href="#Schema-References">Schema References</a><a id="Schema-References-1"></a><a class="docs-heading-anchor-permalink" href="#Schema-References" title="Permalink"></a></h3><p>For deeply nested or repeated types, pass <code>use_references=true</code> to factor shared types into <code>$defs</code> and reference them via <code>$ref</code>:</p><pre><code class="language-julia hljs">print(JSON.json(schema(Person, use_references=true), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;name&quot;: {
+      &quot;type&quot;: &quot;string&quot;
+    },
+    &quot;address&quot;: {
+      &quot;$ref&quot;: &quot;#/$defs/Main.Address&quot;,
+      &quot;description&quot;: &quot;Semantic of address in the context of the schema&quot;
+    }
+  },
+  &quot;required&quot;: [
+    &quot;name&quot;,
+    &quot;address&quot;
+  ],
+  &quot;$defs&quot;: {
+    &quot;Main.Address&quot;: {
+      &quot;type&quot;: &quot;object&quot;,
+      &quot;properties&quot;: {
+        &quot;street&quot;: {
+          &quot;type&quot;: &quot;string&quot;
+        },
+        &quot;city&quot;: {
+          &quot;type&quot;: &quot;string&quot;
+        }
+      },
+      &quot;required&quot;: [
+        &quot;street&quot;,
+        &quot;city&quot;
+      ]
+    }
+  }
+}</code></pre><h2 id="Custom-Dict-Type"><a class="docs-heading-anchor" href="#Custom-Dict-Type">Custom Dict Type</a><a id="Custom-Dict-Type-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Dict-Type" title="Permalink"></a></h2><p>By default schemas use <code>JSON.Object</code> (preserves insertion order). You can switch to <code>Dict</code> if order doesn&#39;t matter:</p><pre><code class="language-julia hljs">d = schema(Person, dict_type=Dict)
+typeof(d)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{String, Any}</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Tuesday 17 February 2026 15:24">Tuesday 17 February 2026</span>. Using Julia version 1.11.9.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
