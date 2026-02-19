@@ -126,6 +126,10 @@ schema(
 Generates a JSON Schema dictionary from a Julia type or a Julia function
 method.
 
+For function schemas:
+- `selector` chooses which method to extract (index, `Method`, or selector fn).
+- `method_annotation` overrides/augments metadata without defining `annotate`.
+
 **Keyword arguments:**
 - `use_references` — when `true`, nested struct types are factored into `$defs` and referenced via `$ref`.
 - `dict_type` — dictionary type for the output (default `JSON.Object` for ordered keys).
@@ -170,6 +174,10 @@ callfunction(
 ```
 
 Validate/coerce JSON-style arguments and call the Julia function method.
+
+Supports OpenAI-style wrappers:
+- `{ "arguments": "{...json...}" }`
+- `{ "arguments": {...object...} }`
 
 ## Patterns
 
@@ -233,6 +241,22 @@ tool_schema = schema(weather, llm_adapter=OPENAI_TOOLS)
 result = callfunction(weather, Dict("city" => "Paris", "unit" => "fahrenheit"))
 ```
 
+### Overloaded methods with `selector`
+
+```julia
+function weather_multi(city::String)
+    return (; city, mode="quick")
+end
+
+function weather_multi(city::String, days::Int)
+    return (; city, days, mode="full")
+end
+
+sel = first(methods(weather_multi, (String, Int)))
+schema(weather_multi, selector=sel, llm_adapter=OPENAI_TOOLS)
+callfunction(weather_multi, Dict("city" => "Paris", "days" => 2), selector=sel)
+```
+
 ### Optional fields
 
 Use `Union{Nothing, T}`. In `STANDARD` mode the field is not in `required`. In `OPENAI`/`OPENAI_TOOLS` mode the field stays required but its type becomes `["type", "null"]`.
@@ -284,3 +308,9 @@ JSON.json(schema(MyType, llm_adapter=OPENAI))  # compact
 | `<:AbstractArray`           | `array`           |
 | `<:Enum`                    | `string` + `enum` |
 | Any other `struct`          | `object`          |
+
+## Current limits (functions)
+
+- Varargs (`args...`) and keyword splats (`kwargs...`) are unsupported.
+- Runtime fallback extraction may not fully reconstruct required keyword-only
+  semantics when source is unavailable to `CodeTracking`.

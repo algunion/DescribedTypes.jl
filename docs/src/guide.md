@@ -251,6 +251,45 @@ Generate an OpenAI tool schema:
 print(JSON.json(schema(weather, llm_adapter=OPENAI_TOOLS), 2))
 ```
 
+### Method Selection (`selector`)
+
+For functions with multiple methods, pick the exact method using `selector`.
+You can pass an index, a `Method`, or a selector function.
+
+```@example guide
+function weather_multi(city::String)
+    return (; city, mode="quick")
+end
+
+function weather_multi(city::String, days::Int)
+    return (; city, days, mode="full")
+end
+
+selected = first(methods(weather_multi, (String, Int)))
+schema_selected = schema(weather_multi, selector=selected, llm_adapter=OPENAI_TOOLS)
+print(JSON.json(schema_selected, 2))
+```
+
+### Explicit Method Annotation
+
+You can pass `method_annotation` directly instead of defining
+`annotate(::typeof(fn), ::MethodSignature)`.
+
+```@example guide
+manual_annot = MethodAnnotation(
+    name=:weather_manual,
+    description="Weather tool with explicit annotation argument.",
+    argsannot=Dict(
+        :city => ArgAnnotation(name=:city, description="City", required=true),
+        :days => ArgAnnotation(name=:days, description="Days", required=false),
+        :unit => ArgAnnotation(name=:unit, description="Unit", enum=["celsius", "fahrenheit"], required=false),
+        :include_humidity => ArgAnnotation(name=:include_humidity, description="Humidity toggle", required=false),
+    ),
+)
+
+print(JSON.json(schema(weather, method_annotation=manual_annot, llm_adapter=OPENAI_TOOLS), 2))
+```
+
 ## JSON → Function Calling
 
 Use [`callfunction`](@ref) to validate/coerce JSON-style arguments and invoke
@@ -267,3 +306,17 @@ OpenAI-style wrapped payloads are also accepted:
 ```@example guide
 callfunction(weather, Dict("arguments" => "{\"city\":\"Rome\",\"unit\":\"celsius\"}"))
 ```
+
+You can combine this with method selection for overloaded functions:
+
+```@example guide
+callfunction(weather_multi, Dict("city" => "Paris", "days" => 2), selector=selected)
+```
+
+## Current Function-Extraction Limits
+
+- Varargs (`args...`) and keyword splats (`kwargs...`) are currently rejected.
+- Runtime fallback extraction (used when source is not available through
+  `CodeTracking`) may not fully recover required-keyword semantics.
+- In OpenAI modes, optional/defaulted function args are emitted as required
+  nullable fields (`["type", "null"]`) to match strict-tool conventions.

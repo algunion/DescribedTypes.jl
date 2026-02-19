@@ -58,4 +58,16 @@ schema_dict = schema(Person, llm_adapter=OPENAI)
 print(JSON.json(schema_dict, 2))
 ```
 
+Function tools quickstart:
+
+```@example quickstart
+function ping(city::String; verbose::Bool=false)
+    return (; city, verbose)
+end
+
+tool_schema = schema(ping, llm_adapter=OPENAI_TOOLS)
+call_result = callfunction(ping, Dict("city" => "Paris"))
+(tool_schema["name"], call_result)
+```
+
 See the [Guide](@ref guide) for more detailed usage and examples.
