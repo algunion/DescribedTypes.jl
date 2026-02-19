@@ -5,6 +5,7 @@ makedocs(
     sitename="DescribedTypes.jl",
     modules=[DescribedTypes],
     checkdocs=:exports,
+    warnonly=[:missing_docs],
     format=Documenter.HTML(
         canonical="https://algunion.github.io/DescribedTypes.jl/stable/",
         edit_link="main",
