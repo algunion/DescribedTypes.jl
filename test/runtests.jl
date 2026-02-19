@@ -1051,3 +1051,170 @@ end
     @test json_schema["type"] == "object"
     @test Set(json_schema["required"]) == Set(["a", "b"])
 end
+
+# ===================================================================
+# Function schema + JSON invocation tests
+# ===================================================================
+
+module FunctionTestTypes
+using DescribedTypes
+
+struct Point
+    x::Int
+    y::Int
+end
+
+"""
+Weather lookup helper.
+"""
+function weather(city::String, days::Int=3; unit::String="celsius", include_humidity::Bool=false)
+    return (; city, days, unit, include_humidity)
+end
+
+function optional_union(name::String, limit::Union{Nothing,Int}=nothing; top::Union{Nothing,Int}=nothing)
+    return (; name, limit, top)
+end
+
+function score_point(point::Point, scale::Float64=1.0)
+    return (point.x + point.y) * scale
+end
+
+DescribedTypes.annotate(::typeof(weather), ms::DescribedTypes.MethodSignature) = DescribedTypes.MethodAnnotation(
+    name=:weather_tool,
+    description="Look up weather data.",
+    argsannot=Dict(
+        :city => DescribedTypes.ArgAnnotation(name=:city, description="City name", required=true),
+        :days => DescribedTypes.ArgAnnotation(name=:days, description="Forecast horizon in days", required=false),
+        :unit => DescribedTypes.ArgAnnotation(name=:unit, description="Temperature unit", enum=["celsius", "fahrenheit"], required=false),
+        :include_humidity => DescribedTypes.ArgAnnotation(name=:include_humidity, description="Include humidity signal", required=false),
+    ),
+)
+
+end # module FunctionTestTypes
+
+@testset "extractsignature for functions" begin
+    sig = DescribedTypes.extractsignature(FunctionTestTypes.weather)
+    @test sig.name == :weather
+    @test length(sig.args) == 4
+    @test sig.args[1] isa DescribedTypes.PositionalArg
+    @test sig.args[2] isa DescribedTypes.PositionalArg
+    @test sig.args[3] isa DescribedTypes.KeywordArg
+    @test sig.args[4] isa DescribedTypes.KeywordArg
+
+    @test sig.args[1].name == :city
+    @test sig.args[1].type == String
+    @test sig.args[1].required == true
+
+    @test sig.args[2].name == :days
+    @test sig.args[2].type == Int
+    @test sig.args[2].required == false
+
+    @test sig.args[3].name == :unit
+    @test sig.args[3].type == String
+    @test sig.args[3].required == false
+end
+
+@testset "extractsignature handles Union{Nothing,T}=nothing defaults" begin
+    sig = DescribedTypes.extractsignature(FunctionTestTypes.optional_union)
+    @test length(sig.args) == 3
+    @test sig.args[2].type == Union{Nothing,Int}
+    @test sig.args[2].required == false
+    @test sig.args[3].type == Union{Nothing,Int}
+    @test sig.args[3].required == false
+end
+
+@testset "function schema (STANDARD)" begin
+    s = DescribedTypes.schema(FunctionTestTypes.weather)
+    @test s["type"] == "object"
+    @test Set(keys(s["properties"])) == Set(["city", "days", "unit", "include_humidity"])
+    @test Set(s["required"]) == Set(["city"])
+    @test s["properties"]["city"]["type"] == "string"
+    @test s["properties"]["days"]["type"] == "integer"
+end
+
+@testset "function schema (OPENAI_TOOLS)" begin
+    s = DescribedTypes.schema(FunctionTestTypes.weather, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    @test s["type"] == "function"
+    @test s["name"] == "weather_tool"
+    @test s["description"] == "Look up weather data."
+    @test s["strict"] == true
+
+    inner = s["parameters"]
+    @test inner["type"] == "object"
+    @test Set(inner["required"]) == Set(["city", "days", "unit", "include_humidity"])
+    @test inner["properties"]["days"]["type"] == ["integer", "null"]
+    @test inner["properties"]["unit"]["type"] == ["string", "null"]
+    @test inner["properties"]["unit"]["enum"] == ["celsius", "fahrenheit"]
+    @test inner["additionalProperties"] == false
+end
+
+@testset "function schema (OPENAI)" begin
+    s = DescribedTypes.schema(FunctionTestTypes.weather, llm_adapter=DescribedTypes.OPENAI)
+    @test haskey(s, "schema")
+    @test s["name"] == "weather_tool"
+    @test s["schema"]["properties"]["city"]["description"] == "City name"
+end
+
+@testset "annotate! safety for method signatures" begin
+    sig = DescribedTypes.extractsignature(FunctionTestTypes.weather)
+    bad = DescribedTypes.MethodAnnotation(
+        name=:weather,
+        argsannot=Dict(
+            :city => DescribedTypes.ArgAnnotation(name=:city, required=true),
+        ),
+    )
+    @test_throws ArgumentError DescribedTypes.annotate!(sig, bad)
+end
+
+@testset "callfunction from Dict and JSON" begin
+    res1 = DescribedTypes.callfunction(
+        FunctionTestTypes.weather,
+        Dict("city" => "Paris"),
+    )
+    @test res1 == (city="Paris", days=3, unit="celsius", include_humidity=false)
+
+    res2 = DescribedTypes.callfunction(
+        FunctionTestTypes.weather,
+        Dict("city" => "Berlin", "days" => 1, "unit" => "fahrenheit", "include_humidity" => true),
+    )
+    @test res2 == (city="Berlin", days=1, unit="fahrenheit", include_humidity=true)
+
+    # null optional/defaulted positional argument means "use default"
+    res3 = DescribedTypes.callfunction(
+        FunctionTestTypes.weather,
+        "{\"city\":\"Rome\",\"days\":null,\"unit\":\"celsius\"}",
+    )
+    @test res3 == (city="Rome", days=3, unit="celsius", include_humidity=false)
+
+    # OpenAI-like wrapper payload
+    wrapped = Dict("arguments" => "{\"city\":\"Madrid\",\"unit\":\"fahrenheit\"}")
+    res4 = DescribedTypes.callfunction(FunctionTestTypes.weather, wrapped)
+    @test res4 == (city="Madrid", days=3, unit="fahrenheit", include_humidity=false)
+end
+
+@testset "callfunction validation and coercion" begin
+    # enum validation from ArgAnnotation
+    @test_throws ArgumentError DescribedTypes.callfunction(
+        FunctionTestTypes.weather,
+        Dict("city" => "Paris", "unit" => "kelvin"),
+    )
+
+    # missing required argument
+    @test_throws ArgumentError DescribedTypes.callfunction(
+        FunctionTestTypes.weather,
+        Dict("days" => 2),
+    )
+
+    # unexpected argument
+    @test_throws ArgumentError DescribedTypes.callfunction(
+        FunctionTestTypes.weather,
+        Dict("city" => "Paris", "extra" => 1),
+    )
+
+    # nested struct coercion from JSON object
+    point_score = DescribedTypes.callfunction(
+        FunctionTestTypes.score_point,
+        Dict("point" => Dict("x" => 2, "y" => 3), "scale" => 2.0),
+    )
+    @test point_score == 10.0
+end

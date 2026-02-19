@@ -112,6 +112,36 @@ symbol_enum_strict_error = capture() do io
     end
 end
 
+# ---------- Example 5: Function tool schemas + JSON invocation ----------
+
+"""
+Weather lookup helper.
+"""
+function weather(city::String, days::Int=3; unit::String="celsius", include_humidity::Bool=false)
+    return (; city, days, unit, include_humidity)
+end
+
+DescribedTypes.annotate(::typeof(weather), ms::MethodSignature) = MethodAnnotation(
+    name=:weather_tool,
+    description="Weather lookup tool.",
+    argsannot=Dict(
+        :city => ArgAnnotation(name=:city, description="City name", required=true),
+        :days => ArgAnnotation(name=:days, description="Forecast horizon", required=false),
+        :unit => ArgAnnotation(name=:unit, description="Temperature unit", enum=["celsius", "fahrenheit"], required=false),
+        :include_humidity => ArgAnnotation(name=:include_humidity, description="Include humidity signal", required=false),
+    ),
+)
+
+function_tools_output = capture() do io
+    d = schema(weather, llm_adapter=OPENAI_TOOLS)
+    print(io, JSON.json(d, 2))
+end
+
+function_call_output = capture() do io
+    res = callfunction(weather, Dict("city" => "Paris", "unit" => "fahrenheit"))
+    print(io, JSON.json(res, 2))
+end
+
 # ---------- Assemble README ----------
 
 readme = """
@@ -181,6 +211,41 @@ println(JSON.json(schema_dict, 2))
 Output:
 ```json
 $(tools_output)
+```
+
+## Function Method Tools (`function -> schema`, `JSON -> call`)
+
+The package also supports direct function-method extraction and invocation:
+
+```julia
+# Weather lookup helper.
+function weather(city::String, days::Int=3; unit::String="celsius", include_humidity::Bool=false)
+    return (; city, days, unit, include_humidity)
+end
+
+DescribedTypes.annotate(::typeof(weather), ms::MethodSignature) = MethodAnnotation(
+    name=:weather_tool,
+    description="Weather lookup tool.",
+    argsannot=Dict(
+        :city => ArgAnnotation(name=:city, description="City name", required=true),
+        :days => ArgAnnotation(name=:days, description="Forecast horizon", required=false),
+        :unit => ArgAnnotation(name=:unit, description="Temperature unit", enum=["celsius", "fahrenheit"], required=false),
+        :include_humidity => ArgAnnotation(name=:include_humidity, description="Include humidity signal", required=false),
+    ),
+)
+
+tool_schema = schema(weather, llm_adapter=OPENAI_TOOLS)
+result = callfunction(weather, Dict("city" => "Paris", "unit" => "fahrenheit"))
+```
+
+Tool schema output:
+```json
+$(function_tools_output)
+```
+
+Function-call output:
+```json
+$(function_call_output)
 ```
 
 ## Optional Fields

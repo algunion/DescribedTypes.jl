@@ -119,6 +119,92 @@ Output:
 }
 ```
 
+## Function Method Tools (`function -> schema`, `JSON -> call`)
+
+The package also supports direct function-method extraction and invocation:
+
+```julia
+# Weather lookup helper.
+function weather(city::String, days::Int=3; unit::String="celsius", include_humidity::Bool=false)
+    return (; city, days, unit, include_humidity)
+end
+
+DescribedTypes.annotate(::typeof(weather), ms::MethodSignature) = MethodAnnotation(
+    name=:weather_tool,
+    description="Weather lookup tool.",
+    argsannot=Dict(
+        :city => ArgAnnotation(name=:city, description="City name", required=true),
+        :days => ArgAnnotation(name=:days, description="Forecast horizon", required=false),
+        :unit => ArgAnnotation(name=:unit, description="Temperature unit", enum=["celsius", "fahrenheit"], required=false),
+        :include_humidity => ArgAnnotation(name=:include_humidity, description="Include humidity signal", required=false),
+    ),
+)
+
+tool_schema = schema(weather, llm_adapter=OPENAI_TOOLS)
+result = callfunction(weather, Dict("city" => "Paris", "unit" => "fahrenheit"))
+```
+
+Tool schema output:
+```json
+{
+  "type": "function",
+  "name": "weather_tool",
+  "description": "Weather lookup tool.",
+  "strict": true,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string",
+        "description": "City name"
+      },
+      "days": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Forecast horizon"
+      },
+      "unit": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Temperature unit",
+        "enum": [
+          "celsius",
+          "fahrenheit"
+        ]
+      },
+      "include_humidity": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "Include humidity signal"
+      }
+    },
+    "required": [
+      "city",
+      "days",
+      "unit",
+      "include_humidity"
+    ],
+    "additionalProperties": false
+  }
+}
+```
+
+Function-call output:
+```json
+{
+  "city": "Paris",
+  "days": 3,
+  "unit": "fahrenheit",
+  "include_humidity": false
+}
+```
+
 ## Optional Fields
 
 Both `OPENAI` and `OPENAI_TOOLS` modes enforce that all fields are listed in

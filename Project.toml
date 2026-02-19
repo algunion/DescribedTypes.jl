@@ -1,13 +1,17 @@
 name = "DescribedTypes"
 uuid = "8741edd9-8b82-4aab-aab4-ad85b116ccea"
-version = "1.0.2"
+version = "1.1.0"
 authors = ["Marius Fersigan <marius.fersigan@gmail.com>"]
 
 [deps]
+CodeTracking = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [compat]
+CodeTracking = "3"
 JSON = "1"
+MacroTools = "0.5"
 julia = "1.11"
 
 [extras]

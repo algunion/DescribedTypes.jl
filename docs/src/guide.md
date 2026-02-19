@@ -210,3 +210,60 @@ switch to `Dict` if order doesn't matter:
 d = schema(Person, dict_type=Dict)
 typeof(d)
 ```
+
+## Function Method Schemas
+
+DescribedTypes can also extract function-method signatures and generate
+tool-ready JSON schemas.
+
+```@example guide
+"""
+Weather lookup helper.
+"""
+function weather(city::String, days::Int=3; unit::String="celsius", include_humidity::Bool=false)
+    return (; city, days, unit, include_humidity)
+end
+
+sig = extractsignature(weather)
+sig.name, length(sig.args)
+```
+
+You can customize method/argument metadata with [`MethodAnnotation`](@ref) and
+[`ArgAnnotation`](@ref):
+
+```@example guide
+DescribedTypes.annotate(::typeof(weather), ms::MethodSignature) = MethodAnnotation(
+    name=:weather_tool,
+    description="Weather lookup tool.",
+    argsannot=Dict(
+        :city => ArgAnnotation(name=:city, description="City name", required=true),
+        :days => ArgAnnotation(name=:days, description="Forecast horizon", required=false),
+        :unit => ArgAnnotation(name=:unit, description="Temperature unit", enum=["celsius", "fahrenheit"], required=false),
+        :include_humidity => ArgAnnotation(name=:include_humidity, description="Include humidity signal", required=false),
+    ),
+)
+nothing # hide
+```
+
+Generate an OpenAI tool schema:
+
+```@example guide
+print(JSON.json(schema(weather, llm_adapter=OPENAI_TOOLS), 2))
+```
+
+## JSON → Function Calling
+
+Use [`callfunction`](@ref) to validate/coerce JSON-style arguments and invoke
+the Julia function:
+
+```@example guide
+res1 = callfunction(weather, Dict("city" => "Paris"))
+res2 = callfunction(weather, "{\"city\":\"Berlin\",\"days\":1,\"unit\":\"fahrenheit\"}")
+(res1, res2)
+```
+
+OpenAI-style wrapped payloads are also accepted:
+
+```@example guide
+callfunction(weather, Dict("arguments" => "{\"city\":\"Rome\",\"unit\":\"celsius\"}"))
+```

@@ -1,10 +1,15 @@
 # DescribedTypes.jl
 
-*Annotate Julia types with descriptions and generate JSON Schemas for LLM provider APIs.*
+*Annotate Julia types/functions and generate JSON Schemas for LLM provider APIs.*
 
 ## Overview
 
-DescribedTypes.jl lets you attach human-readable descriptions to Julia `struct` types and their fields, then automatically produces JSON Schema dictionaries compatible with LLM structured-output APIs.
+DescribedTypes.jl lets you attach human-readable descriptions to Julia `struct`
+types and Julia function methods, then automatically produces JSON Schema
+dictionaries compatible with LLM structured-output APIs.
+
+For functions, the package also supports argument execution from JSON payloads:
+`function -> schema` and `JSON -> typed function call`.
 
 Supported adapters:
 

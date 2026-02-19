@@ -7,7 +7,9 @@
 
 ```julia
 using DescribedTypes
-# Exports: schema, Annotation, annotate, LLMAdapter, STANDARD, OPENAI, OPENAI_TOOLS, GEMINI
+# Exports: schema, Annotation, annotate, LLMAdapter, STANDARD, OPENAI, OPENAI_TOOLS, GEMINI,
+#          ArgAnnotation, MethodAnnotation, MethodSignature, PositionalArg, KeywordArg,
+#          extractsignature, annotate!, callfunction
 ```
 
 ## Types
@@ -46,12 +48,40 @@ Metadata for a Julia type or field used during JSON Schema generation.
 - `enum` — constrained values (`String` and/or `Symbol`) for schema enums.
 - `parameters` — per-field `Annotation` keyed by field name (`Symbol`).
 
+### Function-annotation types
+
+```julia
+struct ArgAnnotation
+    name::Symbol
+    description::Union{String,Nothing}
+    enum::Union{Vector,Nothing}
+    required::Bool
+    llmexclude::Bool
+    userprovided::Bool
+end
+
+Base.@kwdef struct MethodAnnotation
+    name::Symbol
+    description::Union{String,Nothing} = nothing
+    argsannot::Dict{Symbol,ArgAnnotation} = Dict{Symbol,ArgAnnotation}()
+end
+
+Base.@kwdef mutable struct MethodSignature
+    name::Symbol
+    description::Union{String,Nothing} = nothing
+    args::Vector{FunArg}
+end
+```
+
+Use these to annotate extracted function methods before schema generation.
+
 ## Functions
 
 ### `annotate`
 
 ```julia
 annotate(::Type{T}) -> Annotation
+annotate(::Function, ::MethodSignature) -> MethodAnnotation
 ```
 
 Override per type to attach metadata:
@@ -68,6 +98,8 @@ DescribedTypes.annotate(::Type{MyStruct}) = Annotation(
 ```
 
 Default fallback uses `string(T)` as name with generic field descriptions.
+For functions, default fallback emits a `MethodAnnotation` with generic
+argument descriptions and inferred required/default behavior.
 
 ### `schema`
 
@@ -79,9 +111,20 @@ schema(
     llm_adapter::LLMAdapter = STANDARD,
     enum_duplicate_policy::Symbol = :dedupe
 ) -> AbstractDict{String, Any}
+
+schema(
+    fn::Function;
+    selector::Union{Int,Method,Function}=1,
+    method_annotation::Union{Nothing,MethodAnnotation}=nothing,
+    use_references::Bool=false,
+    dict_type::Type{<:AbstractDict}=JSON.Object,
+    llm_adapter::LLMAdapter=STANDARD,
+    enum_duplicate_policy::Symbol=:dedupe
+) -> AbstractDict{String, Any}
 ```
 
-Generates a JSON Schema dictionary from a Julia type.
+Generates a JSON Schema dictionary from a Julia type or a Julia function
+method.
 
 **Keyword arguments:**
 - `use_references` — when `true`, nested struct types are factored into `$defs` and referenced via `$ref`.
@@ -98,6 +141,35 @@ Generates a JSON Schema dictionary from a Julia type.
 | `STANDARD`     | `type`, `properties`, `required` [, `$defs`]                                       |
 | `OPENAI`       | `name`, `description`, `strict`, `schema` → {schema object}                        |
 | `OPENAI_TOOLS` | `type="function"`, `name`, `description`, `strict`, `parameters` → {schema object} |
+
+### `extractsignature`
+
+```julia
+extractsignature(fn::Function, selector::Union{Int,Method,Function}=1) -> MethodSignature
+```
+
+Extract one Julia function method into a schema-friendly signature model.
+
+### `annotate!`
+
+```julia
+annotate!(ms::MethodSignature, ma::MethodAnnotation)
+```
+
+Apply a `MethodAnnotation` to an extracted signature.
+
+### `callfunction`
+
+```julia
+callfunction(
+    fn::Function,
+    arguments::Union{AbstractString,AbstractDict};
+    selector::Union{Int,Method,Function}=1,
+    method_annotation::Union{Nothing,MethodAnnotation}=nothing,
+)
+```
+
+Validate/coerce JSON-style arguments and call the Julia function method.
 
 ## Patterns
 
@@ -138,6 +210,27 @@ schema(Weather, llm_adapter=OPENAI_TOOLS)
 
 # With $defs for nested types
 schema(Weather, use_references=true)
+```
+
+### Function tool schema and invocation
+
+```julia
+function weather(city::String, days::Int=3; unit::String="celsius")
+    return (; city, days, unit)
+end
+
+DescribedTypes.annotate(::typeof(weather), ms::MethodSignature) = MethodAnnotation(
+    name=:weather_tool,
+    description="Weather lookup tool.",
+    argsannot=Dict(
+        :city => ArgAnnotation(name=:city, description="City name", required=true),
+        :days => ArgAnnotation(name=:days, description="Forecast horizon", required=false),
+        :unit => ArgAnnotation(name=:unit, description="Temperature unit", enum=["celsius", "fahrenheit"], required=false),
+    ),
+)
+
+tool_schema = schema(weather, llm_adapter=OPENAI_TOOLS)
+result = callfunction(weather, Dict("city" => "Paris", "unit" => "fahrenheit"))
 ```
 
 ### Optional fields
