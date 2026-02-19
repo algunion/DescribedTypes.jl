@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Guide · DescribedTypes.jl</title><meta name="title" content="Guide · DescribedTypes.jl"/><meta property="og:title" content="Guide · DescribedTypes.jl"/><meta property="twitter:title" content="Guide · DescribedTypes.jl"/><meta name="description" content="Documentation for DescribedTypes.jl."/><meta property="og:description" content="Documentation for DescribedTypes.jl."/><meta property="twitter:description" content="Documentation for DescribedTypes.jl."/><meta property="og:url" content="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><meta property="twitter:url" content="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><link rel="canonical" href="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">DescribedTypes.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Guide</a><ul class="internal"><li><a class="tocitem" href="#Annotating-Types"><span>Annotating Types</span></a></li><li><a class="tocitem" href="#Generating-Schemas"><span>Generating Schemas</span></a></li><li><a class="tocitem" href="#Optional-Fields"><span>Optional Fields</span></a></li><li><a class="tocitem" href="#Enum-Fields"><span>Enum Fields</span></a></li><li><a class="tocitem" href="#Nested-Types"><span>Nested Types</span></a></li><li><a class="tocitem" href="#Custom-Dict-Type"><span>Custom Dict Type</span></a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li><li><a class="tocitem" href="../llm/">LLM Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Guide</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Guide</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/algunion/DescribedTypes.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/algunion/DescribedTypes.jl/blob/main/docs/src/guide.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="guide"><a class="docs-heading-anchor" href="#guide">Guide</a><a id="guide-1"></a><a class="docs-heading-anchor-permalink" href="#guide" title="Permalink"></a></h1><h2 id="Annotating-Types"><a class="docs-heading-anchor" href="#Annotating-Types">Annotating Types</a><a id="Annotating-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Annotating-Types" title="Permalink"></a></h2><p>Every type that you want to generate a schema for needs an <a href="../llm/#annotate"><code>annotate</code></a> method that returns an <a href="../llm/#Annotation"><code>Annotation</code></a>. The annotation carries a name, description, and per-field metadata.</p><pre><code class="language-julia hljs">using DescribedTypes
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Guide · DescribedTypes.jl</title><meta name="title" content="Guide · DescribedTypes.jl"/><meta property="og:title" content="Guide · DescribedTypes.jl"/><meta property="twitter:title" content="Guide · DescribedTypes.jl"/><meta name="description" content="Documentation for DescribedTypes.jl."/><meta property="og:description" content="Documentation for DescribedTypes.jl."/><meta property="twitter:description" content="Documentation for DescribedTypes.jl."/><meta property="og:url" content="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><meta property="twitter:url" content="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><link rel="canonical" href="https://algunion.github.io/DescribedTypes.jl/stable/guide/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">DescribedTypes.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Guide</a><ul class="internal"><li><a class="tocitem" href="#Annotating-Types"><span>Annotating Types</span></a></li><li><a class="tocitem" href="#Generating-Schemas"><span>Generating Schemas</span></a></li><li><a class="tocitem" href="#Optional-Fields"><span>Optional Fields</span></a></li><li><a class="tocitem" href="#Enum-Fields"><span>Enum Fields</span></a></li><li><a class="tocitem" href="#Nested-Types"><span>Nested Types</span></a></li><li><a class="tocitem" href="#Custom-Dict-Type"><span>Custom Dict Type</span></a></li><li><a class="tocitem" href="#Function-Method-Schemas"><span>Function Method Schemas</span></a></li><li><a class="tocitem" href="#JSON-Function-Calling"><span>JSON → Function Calling</span></a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li><li><a class="tocitem" href="../llm/">LLM Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Guide</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Guide</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/algunion/DescribedTypes.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/algunion/DescribedTypes.jl/blob/main/docs/src/guide.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="guide"><a class="docs-heading-anchor" href="#guide">Guide</a><a id="guide-1"></a><a class="docs-heading-anchor-permalink" href="#guide" title="Permalink"></a></h1><h2 id="Annotating-Types"><a class="docs-heading-anchor" href="#Annotating-Types">Annotating Types</a><a id="Annotating-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Annotating-Types" title="Permalink"></a></h2><p>Every type that you want to generate a schema for needs an <a href="../llm/#annotate"><code>annotate</code></a> method that returns an <a href="../llm/#Annotation"><code>Annotation</code></a>. The annotation carries a name, description, and per-field metadata.</p><pre><code class="language-julia hljs">using DescribedTypes
 using JSON
 
 struct Weather
@@ -235,7 +235,45 @@ print(JSON.json(schema(Shirt, llm_adapter=OPENAI), 2))</code></pre><pre class="d
     ],
     &quot;additionalProperties&quot;: false
   }
-}</code></pre><div class="admonition is-info" id="Note-d994660cd7d64f81"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-d994660cd7d64f81" title="Permalink"></a></header><div class="admonition-body"><p>The <code>enum</code> keyword in annotations only takes effect in OpenAI modes (<code>OPENAI</code> / <code>OPENAI_TOOLS</code>). In <code>STANDARD</code> mode it is ignored.</p></div></div><h2 id="Nested-Types"><a class="docs-heading-anchor" href="#Nested-Types">Nested Types</a><a id="Nested-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Nested-Types" title="Permalink"></a></h2><p>Nested structs are expanded inline by default:</p><pre><code class="language-julia hljs">struct Address
+}</code></pre><div class="admonition is-info" id="Note-d994660cd7d64f81"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-d994660cd7d64f81" title="Permalink"></a></header><div class="admonition-body"><p>The <code>enum</code> keyword in annotations only takes effect in OpenAI modes (<code>OPENAI</code> / <code>OPENAI_TOOLS</code>). In <code>STANDARD</code> mode it is ignored.</p></div></div><p>You can also use symbols in the annotation enum values:</p><pre><code class="language-julia hljs">DescribedTypes.annotate(::Type{Shirt}) = Annotation(
+    name=&quot;Shirt&quot;,
+    description=&quot;A shirt.&quot;,
+    parameters=Dict(
+        :color =&gt; Annotation(name=&quot;color&quot;, description=&quot;Shirt color&quot;, enum=[:red, :green, :blue]),
+    ),
+)
+
+print(JSON.json(schema(Shirt, llm_adapter=OPENAI), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;name&quot;: &quot;Shirt&quot;,
+  &quot;description&quot;: &quot;A shirt.&quot;,
+  &quot;strict&quot;: true,
+  &quot;schema&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;color&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;Shirt color&quot;,
+        &quot;enum&quot;: [
+          &quot;red&quot;,
+          &quot;green&quot;,
+          &quot;blue&quot;
+        ]
+      }
+    },
+    &quot;required&quot;: [
+      &quot;color&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><p>Duplicate handling is configurable when generating schema:</p><pre><code class="language-julia hljs"># default: :dedupe
+schema(Shirt, llm_adapter=OPENAI)
+
+# strict: error on duplicates after normalization
+# schema(Shirt, llm_adapter=OPENAI, enum_duplicate_policy=:error)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">JSON.Object{String, Any} with 4 entries:
+  &quot;name&quot;        =&gt; &quot;Shirt&quot;
+  &quot;description&quot; =&gt; &quot;A shirt.&quot;
+  &quot;strict&quot;      =&gt; true
+  &quot;schema&quot;      =&gt; Object{String, Any}(&quot;type&quot;=&gt;&quot;object&quot;, &quot;properties&quot;=&gt;Object{S…</code></pre><h2 id="Nested-Types"><a class="docs-heading-anchor" href="#Nested-Types">Nested Types</a><a id="Nested-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Nested-Types" title="Permalink"></a></h2><p>Nested structs are expanded inline by default:</p><pre><code class="language-julia hljs">struct Address
     street::String
     city::String
 end
@@ -304,4 +342,69 @@ print(JSON.json(schema(Person), 2))</code></pre><pre class="documenter-example-o
     }
   }
 }</code></pre><h2 id="Custom-Dict-Type"><a class="docs-heading-anchor" href="#Custom-Dict-Type">Custom Dict Type</a><a id="Custom-Dict-Type-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Dict-Type" title="Permalink"></a></h2><p>By default schemas use <code>JSON.Object</code> (preserves insertion order). You can switch to <code>Dict</code> if order doesn&#39;t matter:</p><pre><code class="language-julia hljs">d = schema(Person, dict_type=Dict)
-typeof(d)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{String, Any}</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Tuesday 17 February 2026 15:43">Tuesday 17 February 2026</span>. Using Julia version 1.11.9.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+typeof(d)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Dict{String, Any}</code></pre><h2 id="Function-Method-Schemas"><a class="docs-heading-anchor" href="#Function-Method-Schemas">Function Method Schemas</a><a id="Function-Method-Schemas-1"></a><a class="docs-heading-anchor-permalink" href="#Function-Method-Schemas" title="Permalink"></a></h2><p>DescribedTypes can also extract function-method signatures and generate tool-ready JSON schemas.</p><pre><code class="language-julia hljs">&quot;&quot;&quot;
+Weather lookup helper.
+&quot;&quot;&quot;
+function weather(city::String, days::Int=3; unit::String=&quot;celsius&quot;, include_humidity::Bool=false)
+    return (; city, days, unit, include_humidity)
+end
+
+sig = extractsignature(weather)
+sig.name, length(sig.args)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(:weather, 4)</code></pre><p>You can customize method/argument metadata with <a href="../api/#DescribedTypes.MethodAnnotation"><code>MethodAnnotation</code></a> and <a href="../api/#DescribedTypes.ArgAnnotation"><code>ArgAnnotation</code></a>:</p><pre><code class="language-julia hljs">DescribedTypes.annotate(::typeof(weather), ms::MethodSignature) = MethodAnnotation(
+    name=:weather_tool,
+    description=&quot;Weather lookup tool.&quot;,
+    argsannot=Dict(
+        :city =&gt; ArgAnnotation(name=:city, description=&quot;City name&quot;, required=true),
+        :days =&gt; ArgAnnotation(name=:days, description=&quot;Forecast horizon&quot;, required=false),
+        :unit =&gt; ArgAnnotation(name=:unit, description=&quot;Temperature unit&quot;, enum=[&quot;celsius&quot;, &quot;fahrenheit&quot;], required=false),
+        :include_humidity =&gt; ArgAnnotation(name=:include_humidity, description=&quot;Include humidity signal&quot;, required=false),
+    ),
+)</code></pre><p>Generate an OpenAI tool schema:</p><pre><code class="language-julia hljs">print(JSON.json(schema(weather, llm_adapter=OPENAI_TOOLS), 2))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;type&quot;: &quot;function&quot;,
+  &quot;name&quot;: &quot;weather_tool&quot;,
+  &quot;description&quot;: &quot;Weather lookup tool.&quot;,
+  &quot;strict&quot;: true,
+  &quot;parameters&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;city&quot;: {
+        &quot;type&quot;: &quot;string&quot;,
+        &quot;description&quot;: &quot;City name&quot;
+      },
+      &quot;days&quot;: {
+        &quot;type&quot;: [
+          &quot;integer&quot;,
+          &quot;null&quot;
+        ],
+        &quot;description&quot;: &quot;Forecast horizon&quot;
+      },
+      &quot;unit&quot;: {
+        &quot;type&quot;: [
+          &quot;string&quot;,
+          &quot;null&quot;
+        ],
+        &quot;description&quot;: &quot;Temperature unit&quot;,
+        &quot;enum&quot;: [
+          &quot;celsius&quot;,
+          &quot;fahrenheit&quot;
+        ]
+      },
+      &quot;include_humidity&quot;: {
+        &quot;type&quot;: [
+          &quot;boolean&quot;,
+          &quot;null&quot;
+        ],
+        &quot;description&quot;: &quot;Include humidity signal&quot;
+      }
+    },
+    &quot;required&quot;: [
+      &quot;city&quot;,
+      &quot;days&quot;,
+      &quot;unit&quot;,
+      &quot;include_humidity&quot;
+    ],
+    &quot;additionalProperties&quot;: false
+  }
+}</code></pre><h2 id="JSON-Function-Calling"><a class="docs-heading-anchor" href="#JSON-Function-Calling">JSON → Function Calling</a><a id="JSON-Function-Calling-1"></a><a class="docs-heading-anchor-permalink" href="#JSON-Function-Calling" title="Permalink"></a></h2><p>Use <a href="../llm/#callfunction"><code>callfunction</code></a> to validate/coerce JSON-style arguments and invoke the Julia function:</p><pre><code class="language-julia hljs">res1 = callfunction(weather, Dict(&quot;city&quot; =&gt; &quot;Paris&quot;))
+res2 = callfunction(weather, &quot;{\&quot;city\&quot;:\&quot;Berlin\&quot;,\&quot;days\&quot;:1,\&quot;unit\&quot;:\&quot;fahrenheit\&quot;}&quot;)
+(res1, res2)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">((city = &quot;Paris&quot;, days = 3, unit = &quot;celsius&quot;, include_humidity = false), (city = &quot;Berlin&quot;, days = 1, unit = &quot;fahrenheit&quot;, include_humidity = false))</code></pre><p>OpenAI-style wrapped payloads are also accepted:</p><pre><code class="language-julia hljs">callfunction(weather, Dict(&quot;arguments&quot; =&gt; &quot;{\&quot;city\&quot;:\&quot;Rome\&quot;,\&quot;unit\&quot;:\&quot;celsius\&quot;}&quot;))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(city = &quot;Rome&quot;, days = 3, unit = &quot;celsius&quot;, include_humidity = false)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Thursday 19 February 2026 05:27">Thursday 19 February 2026</span>. Using Julia version 1.11.9.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
