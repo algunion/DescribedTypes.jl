@@ -31,7 +31,7 @@ Base.@kwdef struct Annotation
     name::String
     description::String = ""
     markdown::String = ""
-    enum::Union{Nothing, Vector{String}} = nothing
+    enum::Union{Nothing, Vector{Union{String,Symbol}}} = nothing
     parameters::Union{Nothing, Dict{Symbol, Annotation}} = nothing
 end
 
@@ -43,7 +43,7 @@ Metadata for a Julia type or field used during JSON Schema generation.
 - `name` — display name in schema.
 - `description` — human-readable description.
 - `markdown` — optional Markdown docs.
-- `enum` — constrained string values (appears as `"enum"` in schema).
+- `enum` — constrained values (`String` and/or `Symbol`) for schema enums.
 - `parameters` — per-field `Annotation` keyed by field name (`Symbol`).
 
 ## Functions
@@ -76,7 +76,8 @@ schema(
     schema_type::Type;
     use_references::Bool = false,
     dict_type::Type{<:AbstractDict} = JSON.Object,
-    llm_adapter::LLMAdapter = STANDARD
+    llm_adapter::LLMAdapter = STANDARD,
+    enum_duplicate_policy::Symbol = :dedupe
 ) -> AbstractDict{String, Any}
 ```
 
@@ -86,6 +87,9 @@ Generates a JSON Schema dictionary from a Julia type.
 - `use_references` — when `true`, nested struct types are factored into `$defs` and referenced via `$ref`.
 - `dict_type` — dictionary type for the output (default `JSON.Object` for ordered keys).
 - `llm_adapter` — schema format selector (see `LLMAdapter`).
+- `enum_duplicate_policy` — enum duplicate handling after string normalization:
+  - `:dedupe` (default): keep first-seen value, remove duplicates.
+  - `:error`: throw `ArgumentError` on duplicates.
 
 **Return shape by adapter:**
 

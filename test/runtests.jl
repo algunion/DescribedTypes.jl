@@ -483,6 +483,34 @@ DescribedTypes.annotate(::Type{EnumFieldAnnotated}) = DescribedTypes.Annotation(
     ),
 )
 
+struct SymbolEnumFieldAnnotated
+    color::String
+    size::Int
+end
+DescribedTypes.annotate(::Type{SymbolEnumFieldAnnotated}) = DescribedTypes.Annotation(
+    name="SymbolEnumFieldAnnotated",
+    description="Schema with a symbol-enum-annotated string field.",
+    parameters=Dict(
+        :color => DescribedTypes.Annotation(name="color", description="The color", enum=[:red, :green, :blue]),
+        :size => DescribedTypes.Annotation(name="size", description="The size"),
+    ),
+)
+
+struct SymbolStringDuplicateEnumFieldAnnotated
+    color::String
+end
+DescribedTypes.annotate(::Type{SymbolStringDuplicateEnumFieldAnnotated}) = DescribedTypes.Annotation(
+    name="SymbolStringDuplicateEnumFieldAnnotated",
+    description="Schema with duplicate enum labels after symbol/string normalization.",
+    parameters=Dict(
+        :color => DescribedTypes.Annotation(
+            name="color",
+            description="The color",
+            enum=[:red, "red", :green, "green", :red],
+        ),
+    ),
+)
+
 # Type with an optional field that is itself a nested struct (for anyOf + $ref branch)
 struct OptionalNestedSchema
     label::String
@@ -581,6 +609,14 @@ end
     a2 = DescribedTypes.Annotation(name="A", description="d", enum=["a", "b"])
     @test DescribedTypes.getenum(a2) == ["a", "b"]
 
+    # getenum on annotation with symbol enum
+    a2s = DescribedTypes.Annotation(name="A", description="d", enum=[:a, :b])
+    @test DescribedTypes.getenum(a2s) == [:a, :b]
+
+    # getenum on annotation with mixed string/symbol enum
+    a2m = DescribedTypes.Annotation(name="A", description="d", enum=[:a, "a", :b])
+    @test DescribedTypes.getenum(a2m) == [:a, "a", :b]
+
     # getenum(a, field) when parameters is nothing
     @test DescribedTypes.getenum(a, :foo) === nothing
 
@@ -599,6 +635,24 @@ end
         parameters=Dict(:c => DescribedTypes.Annotation(name="c", description="C", enum=["r", "g", "b"])),
     )
     @test DescribedTypes.getenum(a4, :c) == ["r", "g", "b"]
+
+    # getenum(a, field) when field has symbol enum
+    a5 = DescribedTypes.Annotation(
+        name="A",
+        description="d",
+        parameters=Dict(:c => DescribedTypes.Annotation(name="c", description="C", enum=[:r, :g, :b])),
+    )
+    @test DescribedTypes.getenum(a5, :c) == [:r, :g, :b]
+end
+
+@testset "_normalize_enum_values helper" begin
+    @test DescribedTypes._normalize_enum_values(["a", "b"]) == ["a", "b"]
+    @test DescribedTypes._normalize_enum_values([:a, :b]) == ["a", "b"]
+    @test DescribedTypes._normalize_enum_values([:a, "a", :b, "b", :a]) == ["a", "b"]
+    @test DescribedTypes._normalize_enum_values([:a, "a", :b, "b", :a], :dedupe) == ["a", "b"]
+    @test_throws ArgumentError DescribedTypes._normalize_enum_values([:a, "a"], :error)
+    @test_throws ArgumentError DescribedTypes._normalize_enum_values(Any[:ok, 1])
+    @test_throws ArgumentError DescribedTypes._normalize_enum_values(["a"], :invalid_policy)
 end
 
 # --- Default annotate fallback ---
@@ -670,6 +724,65 @@ end
     @test inner["properties"]["color"]["enum"] == ["red", "green", "blue"]
     @test inner["properties"]["color"]["type"] == "string"
     @test !haskey(inner["properties"]["size"], "enum")
+end
+
+@testset "Symbol enum annotation on field (OPENAI)" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.SymbolEnumFieldAnnotated, llm_adapter=DescribedTypes.OPENAI)
+    inner = json_schema["schema"]
+    @test inner["properties"]["color"]["enum"] == ["red", "green", "blue"]
+    @test inner["properties"]["color"]["type"] == "string"
+    @test inner["properties"]["color"]["description"] == "The color"
+    @test !haskey(inner["properties"]["size"], "enum")
+end
+
+@testset "Symbol enum annotation on field (OPENAI_TOOLS)" begin
+    json_schema = DescribedTypes.schema(EdgeTestTypes.SymbolEnumFieldAnnotated, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    inner = json_schema["parameters"]
+    @test inner["properties"]["color"]["enum"] == ["red", "green", "blue"]
+    @test inner["properties"]["color"]["type"] == "string"
+    @test !haskey(inner["properties"]["size"], "enum")
+end
+
+@testset "Mixed symbol/string duplicate enum normalization (OPENAI)" begin
+    json_schema = DescribedTypes.schema(
+        EdgeTestTypes.SymbolStringDuplicateEnumFieldAnnotated,
+        llm_adapter=DescribedTypes.OPENAI,
+    )
+    inner = json_schema["schema"]
+    @test inner["properties"]["color"]["enum"] == ["red", "green"]
+end
+
+@testset "Mixed symbol/string duplicate enum normalization (OPENAI_TOOLS)" begin
+    json_schema = DescribedTypes.schema(
+        EdgeTestTypes.SymbolStringDuplicateEnumFieldAnnotated,
+        llm_adapter=DescribedTypes.OPENAI_TOOLS,
+    )
+    inner = json_schema["parameters"]
+    @test inner["properties"]["color"]["enum"] == ["red", "green"]
+end
+
+@testset "Duplicate enum policy :error (OPENAI)" begin
+    @test_throws ArgumentError DescribedTypes.schema(
+        EdgeTestTypes.SymbolStringDuplicateEnumFieldAnnotated,
+        llm_adapter=DescribedTypes.OPENAI,
+        enum_duplicate_policy=:error,
+    )
+end
+
+@testset "Duplicate enum policy :error (OPENAI_TOOLS)" begin
+    @test_throws ArgumentError DescribedTypes.schema(
+        EdgeTestTypes.SymbolStringDuplicateEnumFieldAnnotated,
+        llm_adapter=DescribedTypes.OPENAI_TOOLS,
+        enum_duplicate_policy=:error,
+    )
+end
+
+@testset "Duplicate enum policy validation" begin
+    @test_throws ArgumentError DescribedTypes.schema(
+        EdgeTestTypes.SymbolEnumFieldAnnotated,
+        llm_adapter=DescribedTypes.OPENAI,
+        enum_duplicate_policy=:invalid_policy,
+    )
 end
 
 @testset "Enum annotation on field (STANDARD)" begin
@@ -860,6 +973,7 @@ end
     @test s.use_references == false
     @test isempty(s.reference_types)
     @test s.llm_adapter == DescribedTypes.STANDARD
+    @test s.enum_duplicate_policy == :dedupe
     @test s.dict_type == JSON.Object
 end
 

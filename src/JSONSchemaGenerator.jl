@@ -57,6 +57,7 @@ Base.@kwdef mutable struct SchemaSettings
     reference_path::String = raw"#/$defs/"
     dict_type::Type{<:AbstractDict} = JSON.Object
     llm_adapter::LLMAdapter = STANDARD
+    enum_duplicate_policy::Symbol = :dedupe
 end
 
 # --- Public API ---
@@ -66,7 +67,8 @@ end
         schema_type::Type;
         use_references::Bool = false,
         dict_type::Type{<:AbstractDict} = JSON.Object,
-        llm_adapter::LLMAdapter = STANDARD
+        llm_adapter::LLMAdapter = STANDARD,
+        enum_duplicate_policy::Symbol = :dedupe
     )::AbstractDict{String, Any}
 
 Generate a JSON Schema dictionary from a Julia type.
@@ -82,6 +84,11 @@ and require all fields (optional fields use `["type", "null"]`).
 
 When `use_references` is `true`, nested struct types are factored out into
 `\$defs` and referenced via `\$ref`.
+
+`enum_duplicate_policy` controls how annotation enum duplicates are handled
+after conversion to strings:
+- `:dedupe` (default) keeps the first instance and removes repeats.
+- `:error` throws an `ArgumentError` on duplicates.
 
 # Examples
 ```julia
@@ -113,8 +120,11 @@ function schema(
     schema_type::Type;
     use_references::Bool=false,
     dict_type::Type{<:AbstractDict}=JSON.Object,
-    llm_adapter::LLMAdapter=STANDARD
+    llm_adapter::LLMAdapter=STANDARD,
+    enum_duplicate_policy::Symbol=:dedupe
 )::AbstractDict{String,Any}
+    _validate_enum_duplicate_policy(enum_duplicate_policy)
+
     if use_references
         reference_types = _gather_data_types(schema_type)
     else
@@ -124,7 +134,8 @@ function schema(
         use_references=use_references,
         reference_types=reference_types,
         dict_type=dict_type,
-        llm_adapter=llm_adapter
+        llm_adapter=llm_adapter,
+        enum_duplicate_policy=enum_duplicate_policy
     )
     d = _generate_json_object(schema_type, settings)
     if settings.llm_adapter == STANDARD
@@ -159,6 +170,54 @@ _make_dict(settings::SchemaSettings, pairs::Pair{String}...) =
 
 _make_dict(settings::SchemaSettings, pairs::AbstractVector{<:Pair}) =
     settings.dict_type{String,Any}(pairs)
+
+function _validate_enum_duplicate_policy(enum_duplicate_policy::Symbol)
+    if enum_duplicate_policy != :dedupe && enum_duplicate_policy != :error
+        throw(ArgumentError(
+            "Invalid enum_duplicate_policy=$(repr(enum_duplicate_policy)). " *
+            "Expected :dedupe or :error."
+        ))
+    end
+    return nothing
+end
+
+"""
+Normalize annotation enum values for JSON output.
+
+Converts symbols/strings to strings. Duplicate handling is controlled by
+`enum_duplicate_policy`:
+- `:dedupe` keeps first-seen order and removes repeats.
+- `:error` throws `ArgumentError` when a duplicate is found.
+"""
+function _normalize_enum_values(values::AbstractVector, enum_duplicate_policy::Symbol=:dedupe)
+    _validate_enum_duplicate_policy(enum_duplicate_policy)
+
+    normalized = String[]
+    seen = Set{String}()
+
+    for value in values
+        if !(value isa String || value isa Symbol)
+            throw(ArgumentError(
+                "Annotation enum values must be String or Symbol. Got $(typeof(value))."
+            ))
+        end
+
+        value_string = string(value)
+        if value_string in seen
+            if enum_duplicate_policy == :error
+                throw(ArgumentError(
+                    "Duplicate enum value after normalization: $(repr(value_string))."
+                ))
+            end
+            continue
+        end
+
+        push!(normalized, value_string)
+        push!(seen, value_string)
+    end
+
+    return normalized
+end
 
 function _validate_annotation_fields(julia_type::Type, annotation::Annotation)
     params = annotation.parameters
@@ -227,7 +286,7 @@ function _generate_json_object(julia_type::Type, settings::SchemaSettings)
 
                 en = getenum(annotation, name)
                 if !isnothing(en)
-                    jt["enum"] = en
+                    jt["enum"] = _normalize_enum_values(en, settings.enum_duplicate_policy)
                 end
             end
 
@@ -337,4 +396,3 @@ function _get_type_to_gather(input_type::Type)
         return input_type
     end
 end
-

@@ -150,6 +150,30 @@ print(JSON.json(schema(Shirt, llm_adapter=OPENAI), 2))
     The `enum` keyword in annotations only takes effect in OpenAI modes
     (`OPENAI` / `OPENAI_TOOLS`). In `STANDARD` mode it is ignored.
 
+You can also use symbols in the annotation enum values:
+
+```@example guide
+DescribedTypes.annotate(::Type{Shirt}) = Annotation(
+    name="Shirt",
+    description="A shirt.",
+    parameters=Dict(
+        :color => Annotation(name="color", description="Shirt color", enum=[:red, :green, :blue]),
+    ),
+)
+
+print(JSON.json(schema(Shirt, llm_adapter=OPENAI), 2))
+```
+
+Duplicate handling is configurable when generating schema:
+
+```@example guide
+# default: :dedupe
+schema(Shirt, llm_adapter=OPENAI)
+
+# strict: error on duplicates after normalization
+# schema(Shirt, llm_adapter=OPENAI, enum_duplicate_policy=:error)
+```
+
 ## Nested Types
 
 Nested structs are expanded inline by default:

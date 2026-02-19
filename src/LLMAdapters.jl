@@ -27,14 +27,14 @@ Metadata attached to a Julia type (or one of its fields) for JSON Schema generat
 - `name::String` — display name used in the schema
 - `description::String` — human-readable description
 - `markdown::String` — optional Markdown documentation
-- `enum::Union{Nothing,Vector{String}}` — allowable enum values (if any)
+- `enum::Union{Nothing,Vector{Union{String,Symbol}}}` — allowable enum values (if any)
 - `parameters::Union{Nothing,Dict{Symbol,Annotation}}` — per-field annotations
 """
 Base.@kwdef struct Annotation
     name::String
     description::String = ""
     markdown::String = ""
-    enum::Union{Nothing,Vector{String}} = nothing
+    enum::Union{Nothing,Vector{Union{String,Symbol}}} = nothing
     parameters::Union{Nothing,Dict{Symbol,Annotation}} = nothing
 end
 
@@ -80,4 +80,3 @@ DescribedTypes.annotate(::Type{MyType}) = DescribedTypes.Annotation(
 function annotate end
 
 annotate(::Type{T}) where {T} = Annotation(string(T))
-

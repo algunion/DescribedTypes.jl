@@ -85,6 +85,33 @@ optional_openai = capture() do io
     print(io, JSON.json(d, 2))
 end
 
+# ---------- Example 4: Symbol enums + duplicate policy ----------
+
+struct PersonSymbolEnum
+    name::String
+end
+
+DescribedTypes.annotate(::Type{PersonSymbolEnum}) = Annotation(
+    name="PersonSymbolEnum",
+    description="A person with symbol-based enum annotations.",
+    parameters=Dict(
+        :name => Annotation(name="name", description="The name", enum=[:Alice, "Alice", :Bob]),
+    ),
+)
+
+symbol_enum_openai = capture() do io
+    d = schema(PersonSymbolEnum, llm_adapter=OPENAI)
+    print(io, JSON.json(d, 2))
+end
+
+symbol_enum_strict_error = capture() do io
+    try
+        schema(PersonSymbolEnum, llm_adapter=OPENAI, enum_duplicate_policy=:error)
+    catch err
+        print(io, err)
+    end
+end
+
 # ---------- Assemble README ----------
 
 readme = """
@@ -177,6 +204,44 @@ $(optional_standard)
 
 ```json
 $(optional_openai)
+```
+
+## Symbol Enums and Duplicate Handling
+
+Field-level annotation enums accept both `String` and `Symbol` values. Schema
+output still emits strings (JSON-compatible).
+
+```julia
+struct PersonSymbolEnum
+    name::String
+end
+
+DescribedTypes.annotate(::Type{PersonSymbolEnum}) = Annotation(
+    name="PersonSymbolEnum",
+    description="A person with symbol-based enum annotations.",
+    parameters=Dict(
+        :name => Annotation(name="name", description="The name", enum=[:Alice, "Alice", :Bob]),
+    ),
+)
+
+# Default duplicate policy is :dedupe
+schema(PersonSymbolEnum, llm_adapter=OPENAI)
+```
+
+Output (`:dedupe`, default):
+```json
+$(symbol_enum_openai)
+```
+
+To enforce strict duplicate handling, pass `enum_duplicate_policy=:error`:
+
+```julia
+schema(PersonSymbolEnum, llm_adapter=OPENAI, enum_duplicate_policy=:error)
+```
+
+Raises:
+```text
+$(symbol_enum_strict_error)
 ```
 
 ---
