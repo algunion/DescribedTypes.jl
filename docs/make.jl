@@ -4,6 +4,7 @@ using DescribedTypes
 makedocs(
     sitename="DescribedTypes.jl",
     modules=[DescribedTypes],
+    checkdocs=:exports,
     format=Documenter.HTML(
         canonical="https://algunion.github.io/DescribedTypes.jl/stable/",
         edit_link="main",
