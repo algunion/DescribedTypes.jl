@@ -18,6 +18,32 @@ Used internally so that schema-generation rules shared by both modes are written
 """
 _is_openai_mode(adapter::LLMAdapter) = adapter == OPENAI || adapter == OPENAI_TOOLS
 
+# --- Provider envelopes ---
+# Each adapter wraps the generated schema `body` in the envelope its API expects.
+# One method per adapter: adding a provider means adding a method, not a branch.
+
+_wrap_schema(adapter::LLMAdapter, name::AbstractString, description::AbstractString, body, settings) =
+    _wrap_schema(Val(adapter), name, description, body, settings)
+
+_wrap_schema(::Val{STANDARD}, name, description, body, settings) = body
+
+_wrap_schema(::Val{GEMINI}, name, description, body, settings) = body # TODO: implement GEMINI-specific wrapping
+
+_wrap_schema(::Val{OPENAI}, name, description, body, settings) = _make_dict(settings,
+    "name" => name,
+    "description" => description,
+    "strict" => true,
+    "schema" => body,
+)
+
+_wrap_schema(::Val{OPENAI_TOOLS}, name, description, body, settings) = _make_dict(settings,
+    "type" => "function",
+    "name" => name,
+    "description" => description,
+    "strict" => true,
+    "parameters" => body,
+)
+
 """
     Annotation(; name, description="", markdown="", enum=nothing, parameters=nothing)
 
@@ -30,7 +56,7 @@ Metadata attached to a Julia type (or one of its fields) for JSON Schema generat
 - `enum::Union{Nothing,Vector{Union{String,Symbol}}}` — allowable enum values (if any)
 - `parameters::Union{Nothing,Dict{Symbol,Annotation}}` — per-field annotations
 """
-Base.@kwdef struct Annotation
+@kwdef struct Annotation
     name::String
     description::String = ""
     markdown::String = ""

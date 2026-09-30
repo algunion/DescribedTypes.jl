@@ -1,7 +1,3 @@
-if isdefined(@__MODULE__, :LanguageServer)
-    include("../src/DescribedTypes.jl")
-end
-
 using DescribedTypes
 using JSONSchema
 using JSON
@@ -122,6 +118,10 @@ function test_json_schema_validation(json_schema, obj)
     json_string = JSON.json(obj; omit_null=true) # omit_null replaces StructTypes.omitempties
     @test JSONSchema.validate(my_schema, JSON.parse(json_string)) === nothing # validation is OK
 end
+
+# `true` when `json_string` is valid against `json_schema`; used to check rejections too
+validates(json_schema, json_string) =
+    JSONSchema.validate(JSONSchema.Schema(json_schema), JSON.parse(json_string)) === nothing
 
 @testset "Basic Types" begin
     json_schema = DescribedTypes.schema(TestTypes.BasicSchema)
@@ -555,14 +555,19 @@ end # module EdgeTestTypes
     @test DescribedTypes._json_type(EdgeTestTypes.BooleanSchema) == :object
 end
 
-# --- _is_nothing_union coverage ---
+# --- _is_nullable coverage ---
 
-@testset "_is_nothing_union edge cases" begin
-    @test DescribedTypes._is_nothing_union(Nothing) == false
-    @test DescribedTypes._is_nothing_union(Int) == false
-    @test DescribedTypes._is_nothing_union(String) == false
-    @test DescribedTypes._is_nothing_union(Union{Nothing,Int}) == true
-    @test DescribedTypes._is_nothing_union(Union{Nothing,String}) == true
+@testset "_is_nullable edge cases" begin
+    @test DescribedTypes._is_nullable(Nothing) == false
+    @test DescribedTypes._is_nullable(Missing) == false
+    @test DescribedTypes._is_nullable(Any) == false
+    @test DescribedTypes._is_nullable(Int) == false
+    @test DescribedTypes._is_nullable(String) == false
+    @test DescribedTypes._is_nullable(Union{Nothing,Missing}) == false
+    @test DescribedTypes._is_nullable(Union{Nothing,Int}) == true
+    @test DescribedTypes._is_nullable(Union{Nothing,String}) == true
+    @test DescribedTypes._is_nullable(Union{Missing,Int}) == true
+    @test DescribedTypes._nonnull_type(Union{Nothing,Missing,Int}) == Int
 end
 
 # --- _is_openai_mode coverage ---
@@ -1095,6 +1100,7 @@ end # module FunctionTestTypes
 @testset "extractsignature for functions" begin
     sig = DescribedTypes.extractsignature(FunctionTestTypes.weather)
     @test sig.name == :weather
+    @test sig.description == "Weather lookup helper."
     @test length(sig.args) == 4
     @test sig.args[1] isa DescribedTypes.PositionalArg
     @test sig.args[2] isa DescribedTypes.PositionalArg
@@ -1144,8 +1150,13 @@ end
     @test Set(inner["required"]) == Set(["city", "days", "unit", "include_humidity"])
     @test inner["properties"]["days"]["type"] == ["integer", "null"]
     @test inner["properties"]["unit"]["type"] == ["string", "null"]
-    @test inner["properties"]["unit"]["enum"] == ["celsius", "fahrenheit"]
+    # null must be an enum member too, or the "use the default" value is unreachable
+    @test inner["properties"]["unit"]["enum"] == ["celsius", "fahrenheit", nothing]
     @test inner["additionalProperties"] == false
+
+    @test validates(inner, """{"city":"Rome","days":null,"unit":null,"include_humidity":null}""")
+    @test validates(inner, """{"city":"Rome","days":2,"unit":"fahrenheit","include_humidity":true}""")
+    @test !validates(inner, """{"city":"Rome","days":null,"unit":"kelvin","include_humidity":null}""")
 end
 
 @testset "function schema (OPENAI)" begin
@@ -1217,4 +1228,443 @@ end
         Dict("point" => Dict("x" => 2, "y" => 3), "scale" => 2.0),
     )
     @test point_score == 10.0
+end
+
+# ===================================================================
+# Type coverage: common Julia types that used to crash or emit wrong schemas
+# ===================================================================
+
+module WideTypes
+using DescribedTypes
+
+struct SymbolField
+    mode::Symbol
+end
+
+struct AnyField
+    payload::Any
+end
+
+struct DictField
+    counts::Dict{String,Int}
+end
+
+struct FreeDictField
+    meta::Dict{String,Any}
+end
+
+struct UnionField
+    id::Union{Int,String}
+end
+
+struct MissingField
+    score::Union{Missing,Float64}
+end
+
+struct NullableItems
+    values::Vector{Union{Nothing,Int}}
+end
+
+struct TupleField
+    point::NTuple{2,Float64}
+end
+
+struct MixedTupleField
+    pair::Tuple{Int,String}
+end
+
+struct SetField
+    tags::Set{String}
+end
+
+struct EmptyStruct end
+
+struct HasEmpty
+    marker::EmptyStruct
+end
+
+abstract type Shape end
+
+struct AbstractField
+    shape::Shape
+end
+
+struct UnionAllField
+    values::Vector{<:Real}
+end
+
+struct Node
+    label::String
+    children::Vector{Node}
+end
+
+@enum Fruit apple orange
+
+struct OptionalEnum
+    fruit::Union{Nothing,Fruit}
+end
+
+struct OptionalAnnotatedEnum
+    color::Union{Nothing,String}
+end
+DescribedTypes.annotate(::Type{OptionalAnnotatedEnum}) = DescribedTypes.Annotation(
+    name="OptionalAnnotatedEnum",
+    description="Optional color constrained by an annotation enum.",
+    parameters=Dict(
+        :color => DescribedTypes.Annotation(name="color", description="The color", enum=["red", "green"]),
+    ),
+)
+
+struct A1
+    x::Int
+end
+struct A2
+    x::Int
+end
+struct A3
+    x::Int
+end
+struct A4
+    x::Int
+end
+struct A5
+    x::Int
+end
+struct ManyNested
+    a::A1
+    b::A2
+    c::A3
+    d::A4
+    e::A5
+end
+
+end # module WideTypes
+
+@testset "Symbol fields map to strings" begin
+    s = DescribedTypes.schema(WideTypes.SymbolField)
+    @test s["properties"]["mode"] == Dict("type" => "string")
+    test_json_schema_validation(s, WideTypes.SymbolField(:fast))
+end
+
+@testset "Any fields accept any JSON value (STANDARD only)" begin
+    s = DescribedTypes.schema(WideTypes.AnyField)
+    @test isempty(s["properties"]["payload"])
+    @test validates(s, """{"payload": [1, "two", {"three": null}]}""")
+    @test_throws ArgumentError DescribedTypes.schema(WideTypes.AnyField, llm_adapter=DescribedTypes.OPENAI)
+end
+
+@testset "Dict fields map to JSON maps" begin
+    s = DescribedTypes.schema(WideTypes.DictField)
+    counts = s["properties"]["counts"]
+    @test counts == Dict("type" => "object", "additionalProperties" => Dict("type" => "integer"))
+    test_json_schema_validation(s, WideTypes.DictField(Dict("a" => 1, "b" => 2)))
+    @test !validates(s, """{"counts": {"a": "not an integer"}}""")
+
+    free = DescribedTypes.schema(WideTypes.FreeDictField)
+    @test free["properties"]["meta"] == Dict("type" => "object")
+
+    # strict mode cannot express open-ended objects: fail loudly instead of leaking Dict internals
+    for adapter in (DescribedTypes.OPENAI, DescribedTypes.OPENAI_TOOLS)
+        @test_throws "additionalProperties" DescribedTypes.schema(WideTypes.DictField, llm_adapter=adapter)
+    end
+end
+
+@testset "General unions map to anyOf" begin
+    s = DescribedTypes.schema(WideTypes.UnionField)
+    branches = s["properties"]["id"]["anyOf"]
+    @test Set(b["type"] for b in branches) == Set(["integer", "string"])
+    test_json_schema_validation(s, WideTypes.UnionField(7))
+    test_json_schema_validation(s, WideTypes.UnionField("seven"))
+    @test !validates(s, """{"id": 7.5}""")
+
+    o = DescribedTypes.schema(WideTypes.UnionField, llm_adapter=DescribedTypes.OPENAI)
+    @test length(o["schema"]["properties"]["id"]["anyOf"]) == 2
+end
+
+@testset "Union{Missing,T} is optional like Union{Nothing,T}" begin
+    s = DescribedTypes.schema(WideTypes.MissingField)
+    @test isempty(s["required"])
+    @test s["properties"]["score"]["type"] == "number"
+    test_json_schema_validation(s, WideTypes.MissingField(0.5))
+
+    o = DescribedTypes.schema(WideTypes.MissingField, llm_adapter=DescribedTypes.OPENAI)
+    @test o["schema"]["required"] == ["score"]
+    @test o["schema"]["properties"]["score"]["type"] == ["number", "null"]
+end
+
+@testset "Nullable element types" begin
+    s = DescribedTypes.schema(WideTypes.NullableItems)
+    @test s["properties"]["values"]["items"]["type"] == ["integer", "null"]
+    @test validates(s, """{"values": [1, null, 3]}""")
+    @test !validates(s, """{"values": [1, "x"]}""")
+end
+
+@testset "Tuples map to fixed-length arrays" begin
+    s = DescribedTypes.schema(WideTypes.TupleField)
+    point = s["properties"]["point"]
+    @test point["type"] == "array"
+    @test point["items"] == Dict("type" => "number")
+    @test point["minItems"] == 2 && point["maxItems"] == 2
+    test_json_schema_validation(s, WideTypes.TupleField((1.0, 2.0)))
+    @test !validates(s, """{"point": [1.0, 2.0, 3.0]}""")
+
+    @test_throws "Tuple{Int64, String}" DescribedTypes.schema(WideTypes.MixedTupleField)
+end
+
+@testset "Sets map to arrays" begin
+    s = DescribedTypes.schema(WideTypes.SetField)
+    @test s["properties"]["tags"] == Dict("type" => "array", "items" => Dict("type" => "string"))
+    test_json_schema_validation(s, WideTypes.SetField(Set(["a", "b"])))
+end
+
+@testset "Empty structs" begin
+    # JSON.jl writes singleton types as strings, so validate the object form directly
+    s = DescribedTypes.schema(WideTypes.EmptyStruct)
+    @test s["type"] == "object"
+    @test isempty(s["properties"]) && isempty(s["required"])
+    @test validates(s, "{}")
+
+    nested = DescribedTypes.schema(WideTypes.HasEmpty)
+    @test validates(nested, """{"marker": {}}""")
+    @test !validates(nested, """{"marker": "EmptyStruct()"}""")
+end
+
+@testset "Abstract field types fail with an actionable error" begin
+    @test_throws ArgumentError DescribedTypes.schema(WideTypes.AbstractField)
+    @test_throws "Shape" DescribedTypes.schema(WideTypes.AbstractField)
+end
+
+@testset "UnionAll field types use their upper bound" begin
+    s = DescribedTypes.schema(WideTypes.UnionAllField)
+    @test s["properties"]["values"]["items"] == Dict("type" => "number")
+end
+
+@testset "Recursive types" begin
+    # inlining a recursive type cannot terminate; say how to fix it instead of overflowing the stack
+    @test_throws "use_references=true" DescribedTypes.schema(WideTypes.Node)
+
+    ref = "#/\$defs/" * string(WideTypes.Node)
+    s = DescribedTypes.schema(WideTypes.Node, use_references=true)
+    @test s["properties"]["children"]["items"] == Dict("\$ref" => ref)
+    @test s["\$defs"][string(WideTypes.Node)]["properties"]["children"]["items"] == Dict("\$ref" => ref)
+
+    o = DescribedTypes.schema(WideTypes.Node, use_references=true, llm_adapter=DescribedTypes.OPENAI)
+    @test o["schema"]["properties"]["children"]["items"]["\$ref"] == ref
+end
+
+@testset "\$defs follow declaration order" begin
+    s = DescribedTypes.schema(WideTypes.ManyNested, use_references=true)
+    expected = string.([WideTypes.A1, WideTypes.A2, WideTypes.A3, WideTypes.A4, WideTypes.A5])
+    @test collect(keys(s["\$defs"])) == expected
+end
+
+@testset "Nullable enums admit null (OpenAI modes)" begin
+    for adapter in (DescribedTypes.OPENAI, DescribedTypes.OPENAI_TOOLS)
+        wrapper_key = adapter == DescribedTypes.OPENAI ? "schema" : "parameters"
+
+        inner = DescribedTypes.schema(WideTypes.OptionalEnum, llm_adapter=adapter)[wrapper_key]
+        fruit = inner["properties"]["fruit"]
+        @test fruit["type"] == ["string", "null"]
+        @test fruit["enum"] == ["apple", "orange", nothing]
+        @test validates(inner, """{"fruit": null}""")
+        @test validates(inner, """{"fruit": "apple"}""")
+        @test !validates(inner, """{"fruit": "banana"}""")
+
+        inner = DescribedTypes.schema(WideTypes.OptionalAnnotatedEnum, llm_adapter=adapter)[wrapper_key]
+        @test inner["properties"]["color"]["enum"] == ["red", "green", nothing]
+        @test validates(inner, """{"color": null}""")
+        @test !validates(inner, """{"color": "blue"}""")
+    end
+end
+
+# ===================================================================
+# Function extraction robustness
+# ===================================================================
+
+module WideFunctions
+using DescribedTypes
+using ..WideTypes: Fruit
+
+untyped(x) = x
+with_symbol(mode::Symbol) = mode
+with_dict(opts::Dict{String,Any}) = opts
+required_kw(a::Int; n::Int) = a + n
+bounded(x::T) where {T<:Integer} = x
+scaled(xs::Vector{T}; scale::T=one(T)) where {T<:Real} = xs .* scale
+@inline function inlined(x::Int)
+    return x + 1
+end
+Base.@constprop :aggressive constprop(x::Int) = x * 2
+total(xs::Vector{Int}) = sum(xs; init=0)
+maybe_missing(x::Union{Missing,Int}) = x
+choose(fruit::Union{Nothing,Fruit}=nothing) = fruit
+pick(fruit::Union{Nothing,String}) = fruit
+point_tuple(p::NTuple{2,Float64}) = p[1] + p[2]
+tags(t::Set{String}) = sort(collect(t))
+
+"""
+    forecast(city)
+
+Return the forecast for `city`.
+"""
+forecast(city::String) = city
+
+"Area of a square."
+area(side::Int) = side^2
+"Area of a rectangle."
+area(w::Int, h::Int) = w * h
+
+struct Point
+    x::Int
+    y::Int
+end
+struct Segment
+    a::Point
+    b::Point
+end
+seglen(s::Segment, p::Point) = 0.0
+nearest(p::Point, hint::Union{Nothing,Point}=nothing) = p
+
+DescribedTypes.annotate(::typeof(pick), ms::DescribedTypes.MethodSignature) = DescribedTypes.MethodAnnotation(
+    name=:pick,
+    description="Pick a fruit, or nothing.",
+    argsannot=Dict(
+        :fruit => DescribedTypes.ArgAnnotation(name=:fruit, description="Fruit", enum=["apple", "orange"], required=true),
+    ),
+)
+
+# No source file: forces the method-table (runtime) extraction path
+eval(Meta.parse("runtime_bounded(x::T; k::T=one(T)) where {T<:Integer} = x + k"))
+
+end # module WideFunctions
+
+@testset "Untyped (Any) arguments" begin
+    s = DescribedTypes.schema(WideFunctions.untyped)
+    @test isempty(s["properties"]["x"])
+    @test s["required"] == ["x"]
+    @test_throws ArgumentError DescribedTypes.schema(WideFunctions.untyped, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    @test DescribedTypes.callfunction(WideFunctions.untyped, Dict("x" => [1, "a"])) == [1, "a"]
+end
+
+@testset "Symbol arguments" begin
+    s = DescribedTypes.schema(WideFunctions.with_symbol)
+    @test s["properties"]["mode"] == Dict("type" => "string")
+    @test DescribedTypes.callfunction(WideFunctions.with_symbol, Dict("mode" => "fast")) === :fast
+end
+
+@testset "Dict arguments" begin
+    s = DescribedTypes.schema(WideFunctions.with_dict)
+    @test s["properties"]["opts"] == Dict("type" => "object")
+    res = DescribedTypes.callfunction(WideFunctions.with_dict, """{"opts": {"a": 1, "b": [1, 2]}}""")
+    @test res isa Dict{String,Any}
+    @test res["a"] == 1 && res["b"] == [1, 2]
+    @test_throws ArgumentError DescribedTypes.schema(WideFunctions.with_dict, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+end
+
+@testset "Required typed keyword arguments" begin
+    sig = DescribedTypes.extractsignature(WideFunctions.required_kw)
+    kw = only(filter(a -> a isa DescribedTypes.KeywordArg, sig.args))
+    @test (kw.name, kw.type, kw.required) == (:n, Int, true)
+    @test Set(DescribedTypes.schema(WideFunctions.required_kw)["required"]) == Set(["a", "n"])
+    @test DescribedTypes.callfunction(WideFunctions.required_kw, Dict("a" => 1, "n" => 2)) == 3
+    @test_throws ArgumentError DescribedTypes.callfunction(WideFunctions.required_kw, Dict("a" => 1))
+end
+
+@testset "Methods with where clauses" begin
+    sig = DescribedTypes.extractsignature(WideFunctions.bounded)
+    @test only(sig.args).type == Integer
+    @test DescribedTypes.schema(WideFunctions.bounded)["properties"]["x"]["type"] == "integer"
+    @test DescribedTypes.callfunction(WideFunctions.bounded, Dict("x" => 3)) == 3
+
+    s = DescribedTypes.schema(WideFunctions.scaled)
+    @test s["properties"]["xs"]["items"]["type"] == "number"
+    @test s["properties"]["scale"]["type"] == "number"
+    @test DescribedTypes.callfunction(WideFunctions.scaled, Dict("xs" => [1, 2], "scale" => 3)) == [3, 6]
+
+    # same method shape, but without source code available
+    rsig = DescribedTypes.extractsignature(WideFunctions.runtime_bounded)
+    @test [(a.name, a.type) for a in rsig.args] == [(:x, Integer), (:k, Integer)]
+    @test DescribedTypes.callfunction(WideFunctions.runtime_bounded, Dict("x" => 1, "k" => 2)) == 3
+end
+
+@testset "Macro-wrapped definitions" begin
+    @test [a.name for a in DescribedTypes.extractsignature(WideFunctions.inlined).args] == [:x]
+    @test DescribedTypes.callfunction(WideFunctions.inlined, Dict("x" => 1)) == 2
+    @test DescribedTypes.callfunction(WideFunctions.constprop, Dict("x" => 2)) == 4
+end
+
+@testset "Docstrings become tool descriptions" begin
+    sig = DescribedTypes.extractsignature(WideFunctions.forecast)
+    @test occursin("Return the forecast for `city`.", sig.description)
+    s = DescribedTypes.schema(WideFunctions.forecast, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    @test occursin("Return the forecast for `city`.", s["description"])
+
+    # each method keeps its own docstring
+    square = first(methods(WideFunctions.area, (Int,)))
+    rectangle = first(methods(WideFunctions.area, (Int, Int)))
+    @test DescribedTypes.extractsignature(WideFunctions.area, square).description == "Area of a square."
+    @test DescribedTypes.extractsignature(WideFunctions.area, rectangle).description == "Area of a rectangle."
+
+    # undocumented functions keep the generic fallback
+    @test DescribedTypes.extractsignature(WideFunctions.untyped).description === nothing
+end
+
+@testset "use_references for function schemas" begin
+    point_ref = "#/\$defs/" * string(WideFunctions.Point)
+    segment_ref = "#/\$defs/" * string(WideFunctions.Segment)
+
+    s = DescribedTypes.schema(WideFunctions.seglen, use_references=true)
+    @test collect(keys(s["\$defs"])) == [string(WideFunctions.Segment), string(WideFunctions.Point)]
+    @test s["properties"]["s"] == Dict("\$ref" => segment_ref)
+    @test s["properties"]["p"] == Dict("\$ref" => point_ref)
+    @test s["\$defs"][string(WideFunctions.Segment)]["properties"]["a"]["\$ref"] == point_ref
+
+    # without references nothing leaks a `$defs` key into argument schemas
+    for adapter in (DescribedTypes.STANDARD, DescribedTypes.OPENAI_TOOLS)
+        @test !occursin("\$defs", JSON.json(DescribedTypes.schema(WideFunctions.seglen, llm_adapter=adapter)))
+    end
+
+    t = DescribedTypes.schema(WideFunctions.nearest, use_references=true, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    params = t["parameters"]
+    @test haskey(params, "\$defs")
+    hint = params["properties"]["hint"]
+    @test haskey(hint, "description")
+    @test Set(keys(b) for b in hint["anyOf"]) == Set([Set(["\$ref"]), Set(["type"])])
+end
+
+@testset "Nullable enum arguments" begin
+    s = DescribedTypes.schema(WideFunctions.choose)
+    @test s["properties"]["fruit"]["enum"] == ["apple", "orange", nothing]
+    @test validates(s, """{"fruit": null}""")
+    @test DescribedTypes.callfunction(WideFunctions.choose, Dict("fruit" => "orange")) == WideTypes.orange
+
+    t = DescribedTypes.schema(WideFunctions.pick, llm_adapter=DescribedTypes.OPENAI_TOOLS)
+    @test t["parameters"]["properties"]["fruit"]["enum"] == ["apple", "orange", nothing]
+    @test DescribedTypes.callfunction(WideFunctions.pick, Dict("fruit" => nothing)) === nothing
+    @test DescribedTypes.callfunction(WideFunctions.pick, Dict("fruit" => "apple")) == "apple"
+    @test_throws ArgumentError DescribedTypes.callfunction(WideFunctions.pick, Dict("fruit" => "kiwi"))
+end
+
+@testset "callfunction coercion edge cases" begin
+    # element type must not depend on type inference (failed on Julia 1.11)
+    @test DescribedTypes.callfunction(WideFunctions.total, Dict("xs" => [])) == 0
+    @test DescribedTypes.callfunction(WideFunctions.total, """{"xs": []}""") == 0
+
+    @test DescribedTypes.callfunction(WideFunctions.maybe_missing, Dict("x" => nothing)) === missing
+    @test DescribedTypes.callfunction(WideFunctions.maybe_missing, Dict("x" => 4)) == 4
+    @test DescribedTypes.schema(WideFunctions.maybe_missing)["properties"]["x"]["type"] == ["integer", "null"]
+
+    @test DescribedTypes.callfunction(WideFunctions.point_tuple, Dict("p" => [1, 2])) == 3.0
+    @test_throws ArgumentError DescribedTypes.callfunction(WideFunctions.point_tuple, Dict("p" => [1, 2, 3]))
+    @test DescribedTypes.callfunction(WideFunctions.tags, Dict("t" => ["b", "a", "b"])) == ["a", "b"]
+end
+
+@testset "ArgAnnotation exclusion flags imply optional" begin
+    excluded = DescribedTypes.ArgAnnotation(name=:x, llmexclude=true)
+    @test !excluded.required && excluded.llmexclude
+    provided = DescribedTypes.ArgAnnotation(name=:x, userprovided=true)
+    @test !provided.required && provided.userprovided
+    @test DescribedTypes.ArgAnnotation(name=:x).required
+    # an explicit contradiction is still rejected
+    @test_throws ArgumentError DescribedTypes.ArgAnnotation(name=:x, required=true, llmexclude=true)
 end

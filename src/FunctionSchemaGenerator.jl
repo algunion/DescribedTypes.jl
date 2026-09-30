@@ -8,7 +8,7 @@ abstract type FunArg end
 
 Internal representation of an extracted positional function argument.
 """
-Base.@kwdef mutable struct PositionalArg <: FunArg
+@kwdef mutable struct PositionalArg <: FunArg
     name::Symbol
     position::Int
     type::Type = Any
@@ -24,7 +24,7 @@ end
 
 Internal representation of an extracted keyword function argument.
 """
-Base.@kwdef mutable struct KeywordArg <: FunArg
+@kwdef mutable struct KeywordArg <: FunArg
     name::Symbol
     type::Type = Any
     required::Bool = true
@@ -35,9 +35,12 @@ Base.@kwdef mutable struct KeywordArg <: FunArg
 end
 
 """
-    ArgAnnotation(; name, description=nothing, enum=nothing, required=true, llmexclude=false, userprovided=false)
+    ArgAnnotation(; name, description=nothing, enum=nothing, llmexclude=false, userprovided=false, required=!(llmexclude || userprovided))
 
 Annotation metadata for one function argument.
+
+`required` defaults to `true`, except for arguments hidden from the model
+(`llmexclude=true` or `userprovided=true`), which default to `false`.
 """
 struct ArgAnnotation
     name::Symbol
@@ -58,7 +61,7 @@ struct ArgAnnotation
     end
 end
 
-function ArgAnnotation(; name=Symbol(), description=nothing, enum=nothing, required=true, llmexclude=false, userprovided=false)
+function ArgAnnotation(; name=Symbol(), description=nothing, enum=nothing, llmexclude=false, userprovided=false, required=!(llmexclude || userprovided))
     return ArgAnnotation(name, description, enum, required, llmexclude, userprovided)
 end
 
@@ -67,7 +70,7 @@ end
 
 Annotation metadata for a function method.
 """
-Base.@kwdef struct MethodAnnotation
+@kwdef struct MethodAnnotation
     name::Symbol
     description::Union{String,Nothing} = nothing
     argsannot::Dict{Symbol,ArgAnnotation} = Dict{Symbol,ArgAnnotation}()
@@ -78,28 +81,44 @@ end
 
 Extracted signature model for one Julia function method.
 """
-Base.@kwdef mutable struct MethodSignature
+@kwdef mutable struct MethodSignature
     name::Symbol
     description::Union{String,Nothing} = nothing
     args::Vector{FunArg}
 end
 
-isincluded(arg::FunArg) = !getfield(arg, :llmexclude)
+isincluded(arg::FunArg) = !arg.llmexclude
 
-function _method_docstring(fn::Function)
-    d = try
-        Base.Docs.getdoc(fn)
-    catch
-        nothing
+# Docstrings of `fn` whose signature covers `method`; generic docstrings (attached without
+# a signature) are the fallback. `Base.Docs.getdoc` is a customization hook, not a lookup.
+function _method_docstring(fn::Function, method::Method)
+    binding = Base.Docs.Binding(parentmodule(fn), nameof(fn))
+    argtypes = Base.tuple_type_tail(method.sig)
+    matching = String[]
+    generic = String[]
+    for mod in Base.Docs.modules
+        docs = Base.Docs.meta(mod; autoinit=false)
+        (isnothing(docs) || !haskey(docs, binding)) && continue
+        multidoc = docs[binding]
+        for docsig in multidoc.order
+            text = strip(_docstr_text(multidoc.docs[docsig]))
+            isempty(text) && continue
+            if argtypes <: docsig
+                push!(matching, text)
+            elseif docsig === Union{}
+                push!(generic, text)
+            end
+        end
     end
-    if isnothing(d)
-        return nothing
+    texts = isempty(matching) ? generic : matching
+    return isempty(texts) ? nothing : join(texts, "\n\n")
+end
+
+function _docstr_text(docstr::Base.Docs.DocStr)
+    if isempty(docstr.text) # documented with a non-string object, e.g. `@doc md"..."`
+        return isnothing(docstr.object) ? "" : string(docstr.object)
     end
-    s = strip(string(d))
-    if isempty(s) || s == "nothing"
-        return nothing
-    end
-    return s
+    return join(string(part) for part in docstr.text)
 end
 
 function _select_method(fn::Function, selector::Int)
@@ -119,20 +138,33 @@ function _select_method(fn::Function, selector::Function)
     return selector(methods(fn))
 end
 
-function _method_expr(fn::Function, method::Method)::Union{Nothing,Expr}
-    types = tuple(method.sig.types[2:end]...)
-    code_string = CodeTracking.code_string(fn, types)
-    if isnothing(code_string)
-        return nothing
+# Source of `method`'s definition with wrapping macro calls (`@inline`, `@eval`, ...) peeled off;
+# `nothing` when the source is unavailable or is not a function definition.
+function _method_expr(method::Method)::Union{Nothing,Expr}
+    definition = CodeTracking.definition(String, method)
+    isnothing(definition) && return nothing
+    expr = _unwrap_macrocalls(Meta.parse(first(definition); raise=false))
+    return expr isa Expr && MacroTools.isdef(expr) ? expr : nothing
+end
+
+function _unwrap_macrocalls(expr)
+    if expr isa Expr && expr.head === :macrocall && !isempty(expr.args)
+        return _unwrap_macrocalls(last(expr.args))
     end
-    return Meta.parse(code_string)
+    return expr
+end
+
+# Types in `method`'s signature (including the function itself) with `where` parameters bounded
+function _signature_types(method::Method)
+    sig = method.sig
+    return Any[_upper_bound_type(Base.rewrap_unionall(T, sig)) for T in Base.unwrap_unionall(sig).types]
 end
 
 function _optional_positional_cutoff(fn::Function, selected::Method, positional_types::AbstractVector)
     required_count = length(positional_types)
     for method in methods(fn)
         method === selected && continue
-        mt = collect(method.sig.types[2:end])
+        mt = _signature_types(method)[2:end]
         if length(mt) <= length(positional_types) && mt == positional_types[1:length(mt)]
             required_count = min(required_count, length(mt))
         end
@@ -152,11 +184,11 @@ function _runtime_keyword_args(fn::Function, selected::Method, positional_types:
         candidate isa Function || continue
 
         for method in methods(candidate)
-            sig_types = method.sig.types
+            sig_types = _signature_types(method)
             idx = findfirst(t -> t == typeof(fn), sig_types)
             idx === nothing && continue
 
-            trailing_types = collect(sig_types[(idx + 1):end])
+            trailing_types = sig_types[(idx + 1):end]
             trailing_types == positional_types || continue
 
             argnames = Base.method_argnames(method)
@@ -174,7 +206,10 @@ function _runtime_keyword_args(fn::Function, selected::Method, positional_types:
 end
 
 function _extractsignature_runtime(fn::Function, method::Method, docs::Union{Nothing,String})
-    positional_types = collect(method.sig.types[2:end])
+    positional_types = _signature_types(method)[2:end]
+    if any(Base.isvarargtype, positional_types)
+        throw(ArgumentError("Varargs are not supported for function schema extraction."))
+    end
     positional_names = Base.method_argnames(method)[2:end]
 
     required_cutoff = _optional_positional_cutoff(fn, method, positional_types)
@@ -193,14 +228,38 @@ function _extractsignature_runtime(fn::Function, method::Method, docs::Union{Not
     return MethodSignature(name=method.name, description=docs, args=args)
 end
 
-function _resolve_type(type_expr, mod::Module)::Type
+# `where` parameters mapped to their upper-bound expressions, e.g. `T<:Real` gives `:T => :Real`
+function _where_bounds(where_params)
+    bounds = Dict{Symbol,Any}()
+    for param in where_params
+        bound = _where_bound(param)
+        isnothing(bound) && continue
+        name, upper = bound
+        bounds[name] = _substitute_bounds(upper, bounds) # later parameters may refer to earlier ones
+    end
+    return bounds
+end
+
+_where_bound(param::Symbol) = (param, :Any)
+function _where_bound(param::Expr)
+    param.head === :<: && return (param.args[1], param.args[2])
+    param.head === :>: && return (param.args[1], :Any)
+    param.head === :comparison && return (param.args[3], param.args[5]) # L <: T <: U
+    return nothing
+end
+_where_bound(param) = nothing
+
+_substitute_bounds(expr, bounds::AbstractDict) =
+    MacroTools.postwalk(x -> x isa Symbol ? get(bounds, x, x) : x, expr)
+
+function _resolve_type(type_expr, mod::Module, bounds::AbstractDict)::Type
     if type_expr isa Type
-        return type_expr
+        return _upper_bound_type(type_expr)
     end
     try
-        evaluated = Core.eval(mod, type_expr)
+        evaluated = Core.eval(mod, _substitute_bounds(type_expr, bounds))
         if evaluated isa Type
-            return evaluated
+            return _upper_bound_type(evaluated)
         end
     catch
         # Fall back to Any when we cannot reliably resolve a type expression.
@@ -208,16 +267,16 @@ function _resolve_type(type_expr, mod::Module)::Type
     return Any
 end
 
-function _extract_name_and_type(expr, mod::Module)
+function _extract_name_and_type(expr, mod::Module, bounds::AbstractDict)
     if expr isa Symbol
         return expr, Any
     elseif expr isa Expr
-        if expr.head == :(::)
+        if expr.head == :(::) && length(expr.args) == 2
             name_expr = expr.args[1]
             if !(name_expr isa Symbol)
                 throw(ArgumentError("Unsupported argument pattern $(repr(expr))."))
             end
-            return name_expr, _resolve_type(expr.args[2], mod)
+            return name_expr, _resolve_type(expr.args[2], mod, bounds)
         elseif expr.head == :(...)
             throw(ArgumentError("Varargs are not supported for function schema extraction."))
         end
@@ -225,9 +284,9 @@ function _extract_name_and_type(expr, mod::Module)
     throw(ArgumentError("Unsupported argument pattern $(repr(expr))."))
 end
 
-function _extract_positional_arg(expr, mod::Module, position::Int)::PositionalArg
+function _extract_positional_arg(expr, mod::Module, bounds::AbstractDict, position::Int)::PositionalArg
     if expr isa Expr && expr.head == :kw
-        name, type = _extract_name_and_type(expr.args[1], mod)
+        name, type = _extract_name_and_type(expr.args[1], mod, bounds)
         return PositionalArg(
             name=name,
             position=position,
@@ -237,52 +296,54 @@ function _extract_positional_arg(expr, mod::Module, position::Int)::PositionalAr
         )
     end
 
-    name, type = _extract_name_and_type(expr, mod)
+    name, type = _extract_name_and_type(expr, mod, bounds)
     return PositionalArg(name=name, position=position, type=type)
 end
 
-function _extract_keyword_arg(expr, mod::Module)::KeywordArg
-    if expr isa Symbol
-        return KeywordArg(name=expr, type=Any)
-    elseif expr isa Expr
-        if expr.head == :kw
-            name, type = _extract_name_and_type(expr.args[1], mod)
-            return KeywordArg(name=name, type=type, required=false, default_expr=expr.args[2])
-        elseif expr.head == :(...)
-            throw(ArgumentError("Keyword varargs (`kwargs...`) are not supported for function schema extraction."))
-        end
+function _extract_keyword_arg(expr, mod::Module, bounds::AbstractDict)::KeywordArg
+    if expr isa Expr && expr.head == :kw
+        name, type = _extract_name_and_type(expr.args[1], mod, bounds)
+        return KeywordArg(name=name, type=type, required=false, default_expr=expr.args[2])
+    elseif expr isa Expr && expr.head == :(...)
+        throw(ArgumentError("Keyword varargs (`kwargs...`) are not supported for function schema extraction."))
     end
-    throw(ArgumentError("Unsupported keyword argument pattern $(repr(expr))."))
+    # a keyword without a default value (`k` or `k::T`) is required
+    name, type = _extract_name_and_type(expr, mod, bounds)
+    return KeywordArg(name=name, type=type)
 end
 
-function _extractsignature(expr::Expr, docs::Union{Nothing,String}, mod::Module)::MethodSignature
+function _extractsignature(expr::Expr, method::Method, docs::Union{Nothing,String})::MethodSignature
     def = MacroTools.splitdef(expr)
+    mod = method.module
+    bounds = _where_bounds(get(def, :whereparams, ()))
     args = FunArg[]
 
     for (position, arg_expr) in enumerate(def[:args])
-        push!(args, _extract_positional_arg(arg_expr, mod, position))
+        push!(args, _extract_positional_arg(arg_expr, mod, bounds, position))
     end
 
     for kw_expr in def[:kwargs]
-        push!(args, _extract_keyword_arg(kw_expr, mod))
+        push!(args, _extract_keyword_arg(kw_expr, mod, bounds))
     end
 
-    return MethodSignature(name=def[:name], description=docs, args=args)
+    return MethodSignature(name=method.name, description=docs, args=args)
 end
 
 """
     extractsignature(fn::Function, selector::Union{Int,Method,Function}=1) -> MethodSignature
 
 Extract a function-method signature into a schema-friendly representation.
+
+The method's docstring, if any, becomes the signature description.
 """
 function extractsignature(fn::Function, selector::Union{Int,Method,Function}=1)::MethodSignature
     method = _select_method(fn, selector)
-    expr = _method_expr(fn, method)
-    docs = _method_docstring(fn)
+    docs = _method_docstring(fn, method)
+    expr = _method_expr(method)
     if isnothing(expr)
         return _extractsignature_runtime(fn, method, docs)
     end
-    return _extractsignature(expr, docs, method.module)
+    return _extractsignature(expr, method, docs)
 end
 
 """
@@ -294,10 +355,10 @@ metadata, similarly to `annotate(::Type)`.
 function annotate(::Function, ms::MethodSignature)::MethodAnnotation
     argsannot = Dict{Symbol,ArgAnnotation}()
     for arg in ms.args
-        argsannot[getfield(arg, :name)] = ArgAnnotation(
-            name=getfield(arg, :name),
-            description="Semantic of $(getfield(arg, :name)) in the context of $(ms.name)",
-            required=getfield(arg, :required),
+        argsannot[arg.name] = ArgAnnotation(
+            name=arg.name,
+            description="Semantic of $(arg.name) in the context of $(ms.name)",
+            required=arg.required,
         )
     end
 
@@ -318,14 +379,13 @@ function annotate!(ms::MethodSignature, ma::MethodAnnotation)
     end
 
     for arg in ms.args
-        arg_name = getfield(arg, :name)
-        if !haskey(ma.argsannot, arg_name)
+        if !haskey(ma.argsannot, arg.name)
             throw(ArgumentError(
-                "Method annotation does not match method signature. Missing argument: $(arg_name)"
+                "Method annotation does not match method signature. Missing argument: $(arg.name)"
             ))
         end
 
-        ann = ma.argsannot[arg_name]
+        ann = ma.argsannot[arg.name]
         arg.description = ann.description
         arg.enum = ann.enum
 
@@ -373,85 +433,49 @@ function _normalize_function_enum_values(values::AbstractVector, enum_duplicate_
 end
 
 function _arg_accepts_null(arg::FunArg, settings::SchemaSettings)
-    arg_type = getfield(arg, :type)
-    if _is_nothing_union(arg_type)
-        return true
-    end
-
-    if _is_openai_mode(settings.llm_adapter) && !getfield(arg, :required)
-        return true
-    end
-
-    return false
+    # In OpenAI strict modes, optional/defaulted arguments are sent as `null` to mean "use the default"
+    return _is_nullable(arg.type) || (_is_openai_mode(settings.llm_adapter) && !arg.required)
 end
 
-function _arg_schema_type(arg::FunArg)
-    arg_type = getfield(arg, :type)
-    if _is_nothing_union(arg_type)
-        return _get_optional_type(arg_type)
-    end
-    return arg_type
-end
-
-function _stringify_type_with_null(current_type)
-    if current_type isa String
-        return [current_type, "null"]
-    elseif current_type isa AbstractVector
-        if !("null" in current_type)
-            push!(current_type, "null")
-        end
-        return current_type
-    end
-    return current_type
-end
+_arg_schema_type(arg::FunArg) = _is_nullable(arg.type) ? _nonnull_type(arg.type) : arg.type
 
 function _generate_function_arg_schema(arg::FunArg, settings::SchemaSettings)
-    arg_type = _arg_schema_type(arg)
-    schema_dict = _generate_json_type_def(arg_type, settings)
-
-    if _arg_accepts_null(arg, settings) && haskey(schema_dict, "type")
-        schema_dict["type"] = _stringify_type_with_null(schema_dict["type"])
-    end
-
-    if _is_openai_mode(settings.llm_adapter)
-        schema_dict["description"] = isnothing(getfield(arg, :description)) ?
-            "Semantic of $(getfield(arg, :name)) in the context of function calling" :
-            getfield(arg, :description)
-
-        enum_values = getfield(arg, :enum)
-        if !isnothing(enum_values)
-            schema_dict["enum"] = _normalize_function_enum_values(enum_values, settings.enum_duplicate_policy)
-        end
-    end
-
-    return schema_dict
+    strict = _is_openai_mode(settings.llm_adapter)
+    description = strict ? something(arg.description, "Semantic of $(arg.name) in the context of function calling") : nothing
+    enum_values = strict && !isnothing(arg.enum) ?
+        _normalize_function_enum_values(arg.enum, settings.enum_duplicate_policy) : nothing
+    return _property_schema(_arg_schema_type(arg), settings;
+        nullable=_arg_accepts_null(arg, settings), description, enum=enum_values)
 end
 
 function _generate_function_parameters_schema(ms::MethodSignature, settings::SchemaSettings)
-    names = String[]
-    props = Any[]
+    properties = _make_dict(settings)
     required = String[]
 
     for arg in ms.args
         isincluded(arg) || continue
-        push!(names, string(getfield(arg, :name)))
-        push!(props, _generate_function_arg_schema(arg, settings))
+        name = string(arg.name)
+        properties[name] = _with_context("Argument `$(arg.name)` of $(ms.name)") do
+            _generate_function_arg_schema(arg, settings)
+        end
 
-        if _is_openai_mode(settings.llm_adapter)
-            push!(required, string(getfield(arg, :name)))
-        elseif getfield(arg, :required)
-            push!(required, string(getfield(arg, :name)))
+        if _is_openai_mode(settings.llm_adapter) || arg.required
+            push!(required, name)
         end
     end
 
     d = _make_dict(settings,
         "type" => "object",
-        "properties" => _make_dict(settings, names .=> props),
+        "properties" => properties,
         "required" => required,
     )
 
     if _is_openai_mode(settings.llm_adapter)
         d["additionalProperties"] = false
+    end
+
+    if settings.use_references
+        d[raw"$defs"] = _generate_json_reference_types(settings)
     end
 
     return d
@@ -479,6 +503,7 @@ Generate a JSON Schema dictionary from a Julia function method.
 
 - `selector` chooses the function method (index, `Method`, or selector function).
 - `method_annotation` allows explicit naming/description/per-arg metadata.
+- `use_references=true` factors struct-typed arguments into `\$defs`.
 - `llm_adapter=OPENAI_TOOLS` emits a tool/function-calling wrapper.
 - `llm_adapter=OPENAI` emits a structured-output wrapper.
 """
@@ -493,13 +518,17 @@ function schema(
 )::AbstractDict{String,Any}
     _validate_enum_duplicate_policy(enum_duplicate_policy)
 
+    ms, ma = _annotated_signature(fn, selector, method_annotation)
+
+    reference_types = DataType[]
     if use_references
-        reference_types = Set{DataType}()
-    else
-        reference_types = Set{DataType}()
+        for arg in ms.args
+            isincluded(arg) && _gather_data_types!(reference_types, arg.type)
+        end
     end
 
     settings = SchemaSettings(
+        toplevel=false, # the parameters object is the root, so struct arguments are nested objects
         use_references=use_references,
         reference_types=reference_types,
         dict_type=dict_type,
@@ -507,29 +536,8 @@ function schema(
         enum_duplicate_policy=enum_duplicate_policy,
     )
 
-    ms, ma = _annotated_signature(fn, selector, method_annotation)
     d = _generate_function_parameters_schema(ms, settings)
-
-    if settings.llm_adapter == STANDARD || settings.llm_adapter == GEMINI
-        return d
-    elseif settings.llm_adapter == OPENAI
-        return _make_dict(settings,
-            "name" => string(ma.name),
-            "description" => isnothing(ma.description) ? "" : ma.description,
-            "strict" => true,
-            "schema" => d,
-        )
-    elseif settings.llm_adapter == OPENAI_TOOLS
-        return _make_dict(settings,
-            "type" => "function",
-            "name" => string(ma.name),
-            "description" => isnothing(ma.description) ? "" : ma.description,
-            "strict" => true,
-            "parameters" => d,
-        )
-    end
-
-    return d
+    return _wrap_schema(settings.llm_adapter, string(ma.name), something(ma.description, ""), d, settings)
 end
 
 function _raw_arguments_dict(arguments::AbstractDict)
@@ -564,9 +572,11 @@ function _lookup_argument(raw_arguments::AbstractDict, name::Symbol)
 end
 
 function _coerce_to_type(value, target_type::Type, arg_name::Symbol)
+    target_type = _upper_bound_type(target_type)
+
     if value === nothing
-        if target_type === Any || _is_nothing_union(target_type)
-            return nothing
+        if target_type === Any || Nothing <: target_type || Missing <: target_type
+            return _null_value(target_type)
         end
         throw(ArgumentError("Argument `$(arg_name)` does not accept null values for type $(target_type)."))
     end
@@ -575,12 +585,13 @@ function _coerce_to_type(value, target_type::Type, arg_name::Symbol)
         return value
     end
 
-    if _is_nothing_union(target_type)
-        inner = _get_optional_type(target_type)
-        return _coerce_to_type(value, inner, arg_name)
+    if _is_nullable(target_type)
+        return _coerce_to_type(value, _nonnull_type(target_type), arg_name)
     end
 
-    if target_type == Symbol
+    if target_type isa Union
+        return _coerce_to_union(value, target_type, arg_name)
+    elseif target_type == Symbol
         value isa Symbol && return value
         value isa AbstractString && return Symbol(value)
         throw(ArgumentError("Argument `$(arg_name)` expects Symbol-compatible value, got $(typeof(value))."))
@@ -615,19 +626,64 @@ function _coerce_to_type(value, target_type::Type, arg_name::Symbol)
             "Argument `$(arg_name)` expects enum $(target_type). " *
             "Supported inputs are enum names or integer enum values."
         ))
+    elseif target_type <: Number
+        value isa Number || throw(ArgumentError("Argument `$(arg_name)` expects number, got $(typeof(value))."))
+        return convert(target_type, value)
     elseif target_type <: AbstractArray
         value isa AbstractVector || throw(ArgumentError("Argument `$(arg_name)` expects array, got $(typeof(value))."))
         element_type = eltype(target_type)
-        return [_coerce_to_type(v, element_type, arg_name) for v in value]
+        # typed comprehension: the element type must not depend on inference (empty arrays)
+        return element_type[_coerce_to_type(v, element_type, arg_name) for v in value]
+    elseif target_type <: AbstractSet
+        value isa AbstractVector || throw(ArgumentError("Argument `$(arg_name)` expects array, got $(typeof(value))."))
+        element_type = eltype(target_type)
+        return convert(target_type, Set{element_type}(_coerce_to_type(v, element_type, arg_name) for v in value))
+    elseif target_type <: Tuple
+        return _coerce_to_tuple(value, target_type, arg_name)
     elseif target_type <: AbstractDict
         value isa AbstractDict || throw(ArgumentError("Argument `$(arg_name)` expects object/dict, got $(typeof(value))."))
-        return value
+        return _coerce_to_dict(value, target_type, arg_name)
     elseif isstructtype(target_type)
         value isa AbstractDict || throw(ArgumentError("Argument `$(arg_name)` expects object for $(target_type), got $(typeof(value))."))
         return _dict_to_struct(value, target_type, arg_name)
     end
 
     return value
+end
+
+function _coerce_to_union(value, target_type::Union, arg_name::Symbol)
+    value isa target_type && return value
+    for member in Base.uniontypes(target_type)
+        try
+            return _coerce_to_type(value, member, arg_name)
+        catch err
+            err isa ArgumentError || rethrow()
+        end
+    end
+    throw(ArgumentError("Argument `$(arg_name)` value $(repr(value)) does not match any type in $(target_type)."))
+end
+
+function _coerce_to_tuple(value, target_type::Type, arg_name::Symbol)
+    value isa AbstractVector || throw(ArgumentError("Argument `$(arg_name)` expects array, got $(typeof(value))."))
+    params = Base.unwrap_unionall(target_type).parameters
+    if length(params) == 1 && Base.isvarargtype(params[1])
+        element_types = fill(_upper_bound_type(Base.unwrapva(params[1])), length(value))
+    else
+        if length(value) != length(params)
+            throw(ArgumentError("Argument `$(arg_name)` expects $(length(params)) elements, got $(length(value))."))
+        end
+        element_types = collect(params)
+    end
+    return Tuple(_coerce_to_type(v, T, arg_name) for (v, T) in zip(value, element_types))
+end
+
+function _coerce_to_dict(value::AbstractDict, target_type::Type, arg_name::Symbol)
+    key_type, value_type = keytype(target_type), valtype(target_type)
+    result = Dict{key_type,value_type}()
+    for (k, v) in value
+        result[_coerce_to_type(k, key_type, arg_name)] = _coerce_to_type(v, value_type, arg_name)
+    end
+    return convert(target_type, result)
 end
 
 function _dict_to_struct(value::AbstractDict, target_type::Type, arg_name::Symbol)
@@ -638,8 +694,8 @@ function _dict_to_struct(value::AbstractDict, target_type::Type, arg_name::Symbo
     for (field_name, field_type) in zip(names, types)
         present, raw = _lookup_argument(value, field_name)
         if !present
-            if _is_nothing_union(field_type)
-                push!(field_values, nothing)
+            if _is_nullable(field_type)
+                push!(field_values, _null_value(field_type))
                 continue
             end
             throw(ArgumentError(
@@ -660,6 +716,15 @@ function _check_enum_membership(value, enum_values::Vector, arg_name::Symbol)
             "Argument `$(arg_name)` value $(repr(value)) is not in enum $(repr(normalized_enum))."
         ))
     end
+end
+
+# Check annotation enum membership, then coerce the JSON value to the argument's Julia type
+function _coerce_argument(raw_value, arg::FunArg)
+    # `null` is governed by the argument type (nullable or not), not by the enum
+    if !isnothing(arg.enum) && raw_value !== nothing
+        _check_enum_membership(raw_value, arg.enum, arg.name)
+    end
+    return _coerce_to_type(raw_value, arg.type, arg.name)
 end
 
 """
@@ -686,7 +751,7 @@ function callfunction(
     raw_arguments = _raw_arguments_dict(arguments)
     ms, _ = _annotated_signature(fn, selector, method_annotation)
 
-    included_names = Set{String}(string(getfield(arg, :name)) for arg in ms.args if isincluded(arg))
+    included_names = Set{String}(string(arg.name) for arg in ms.args if isincluded(arg))
     for raw_key in keys(raw_arguments)
         k = raw_key isa Symbol ? string(raw_key) : String(raw_key)
         if !(k in included_names)
@@ -696,7 +761,7 @@ function callfunction(
 
     positional_args = sort(
         [arg for arg in ms.args if arg isa PositionalArg && isincluded(arg)],
-        by=arg -> getfield(arg, :position)
+        by=arg -> arg.position
     )
     keyword_args = [arg for arg in ms.args if arg isa KeywordArg && isincluded(arg)]
 
@@ -704,12 +769,11 @@ function callfunction(
     seen_optional_gap = false
 
     for arg in positional_args
-        arg_name = getfield(arg, :name)
-        present, raw_value = _lookup_argument(raw_arguments, arg_name)
+        present, raw_value = _lookup_argument(raw_arguments, arg.name)
 
         if !present
-            if getfield(arg, :required)
-                throw(ArgumentError("Missing required argument `$(arg_name)` for function $(ms.name)."))
+            if arg.required
+                throw(ArgumentError("Missing required argument `$(arg.name)` for function $(ms.name)."))
             end
             seen_optional_gap = true
             continue
@@ -717,47 +781,36 @@ function callfunction(
 
         if seen_optional_gap
             throw(ArgumentError(
-                "Cannot supply positional argument `$(arg_name)` after omitting an earlier optional positional argument."
+                "Cannot supply positional argument `$(arg.name)` after omitting an earlier optional positional argument."
             ))
         end
 
         # In OpenAI-style strict schemas we encode optional/defaulted args as nullable.
         # A null payload means "use the Julia default", so we omit it from the call.
-        if raw_value === nothing && !getfield(arg, :required)
+        if raw_value === nothing && !arg.required
             seen_optional_gap = true
             continue
         end
 
-        enum_values = getfield(arg, :enum)
-        if !isnothing(enum_values)
-            _check_enum_membership(raw_value, enum_values, arg_name)
-        end
-
-        push!(positional_values, _coerce_to_type(raw_value, getfield(arg, :type), arg_name))
+        push!(positional_values, _coerce_argument(raw_value, arg))
     end
 
     keyword_values = Pair{Symbol,Any}[]
     for arg in keyword_args
-        arg_name = getfield(arg, :name)
-        present, raw_value = _lookup_argument(raw_arguments, arg_name)
+        present, raw_value = _lookup_argument(raw_arguments, arg.name)
 
         if !present
-            if getfield(arg, :required)
-                throw(ArgumentError("Missing required keyword argument `$(arg_name)` for function $(ms.name)."))
+            if arg.required
+                throw(ArgumentError("Missing required keyword argument `$(arg.name)` for function $(ms.name)."))
             end
             continue
         end
 
-        if raw_value === nothing && !getfield(arg, :required)
+        if raw_value === nothing && !arg.required
             continue
         end
 
-        enum_values = getfield(arg, :enum)
-        if !isnothing(enum_values)
-            _check_enum_membership(raw_value, enum_values, arg_name)
-        end
-
-        push!(keyword_values, arg_name => _coerce_to_type(raw_value, getfield(arg, :type), arg_name))
+        push!(keyword_values, arg.name => _coerce_argument(raw_value, arg))
     end
 
     return fn(positional_values...; keyword_values...)
