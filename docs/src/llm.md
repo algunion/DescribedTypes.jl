@@ -98,8 +98,9 @@ DescribedTypes.annotate(::Type{MyStruct}) = Annotation(
 ```
 
 Default fallback uses `string(T)` as name with generic field descriptions.
-For functions, default fallback emits a `MethodAnnotation` with generic
-argument descriptions and inferred required/default behavior.
+For functions, default fallback emits a `MethodAnnotation` whose description is
+the method's docstring (generic text if undocumented), with generic argument
+descriptions and inferred required/default behavior.
 
 ### `schema`
 
@@ -131,7 +132,7 @@ For function schemas:
 - `method_annotation` overrides/augments metadata without defining `annotate`.
 
 **Keyword arguments:**
-- `use_references` — when `true`, nested struct types are factored into `$defs` and referenced via `$ref`.
+- `use_references` — when `true`, nested struct types (and struct-typed function arguments) are factored into `$defs` and referenced via `$ref`. Required for recursive types.
 - `dict_type` — dictionary type for the output (default `JSON.Object` for ordered keys).
 - `llm_adapter` — schema format selector (see `LLMAdapter`).
 - `enum_duplicate_policy` — enum duplicate handling after string normalization:
@@ -153,6 +154,9 @@ extractsignature(fn::Function, selector::Union{Int,Method,Function}=1) -> Method
 ```
 
 Extract one Julia function method into a schema-friendly signature model.
+The method's docstring becomes `description`. Handles `where` clauses (type
+parameters map to their upper bounds), macro-wrapped definitions, and required
+keyword arguments (`f(; n::Int)`).
 
 ### `annotate!`
 
@@ -259,7 +263,7 @@ callfunction(weather_multi, Dict("city" => "Paris", "days" => 2), selector=sel)
 
 ### Optional fields
 
-Use `Union{Nothing, T}`. In `STANDARD` mode the field is not in `required`. In `OPENAI`/`OPENAI_TOOLS` mode the field stays required but its type becomes `["type", "null"]`.
+Use `Union{Nothing, T}` (or `Union{Missing, T}`). In `STANDARD` mode the field is not in `required`. In `OPENAI`/`OPENAI_TOOLS` mode the field stays required but its type becomes `["type", "null"]`, and `null` is appended to its `enum` if it has one.
 
 ```julia
 struct Query
@@ -298,19 +302,30 @@ JSON.json(schema(MyType, llm_adapter=OPENAI))  # compact
 
 ## Supported Julia type mappings
 
-| Julia type                  | JSON Schema type  |
-| :-------------------------- | :---------------- |
-| `String` / `AbstractString` | `string`          |
-| `Bool`                      | `boolean`         |
-| `<:Integer`                 | `integer`         |
-| `<:Real`                    | `number`          |
-| `Nothing` / `Missing`       | `null`            |
-| `<:AbstractArray`           | `array`           |
-| `<:Enum`                    | `string` + `enum` |
-| Any other `struct`          | `object`          |
+| Julia type                               | JSON Schema                                          |
+| :--------------------------------------- | :--------------------------------------------------- |
+| `AbstractString` / `Symbol`              | `string`                                             |
+| `Bool`                                   | `boolean`                                            |
+| `<:Integer`                              | `integer`                                            |
+| `<:Real`                                 | `number`                                             |
+| `Nothing` / `Missing`                    | `null`                                               |
+| `<:Enum`                                 | `string` + `enum`                                    |
+| `<:AbstractArray` / `<:AbstractSet`      | `array` with `items`                                 |
+| `NTuple{N,T}`                            | `array` with `items`, `minItems = maxItems = N`      |
+| `<:AbstractDict{K,V}`                    | `object` with `additionalProperties` (not in OpenAI) |
+| `Union{A,B}`                             | `anyOf`                                              |
+| `Union{Nothing,T}` / `Union{Missing,T}`  | optional `T`                                         |
+| `Any`                                    | `{}` (not in OpenAI modes)                           |
+| concrete `struct`                        | `object`                                             |
+
+Parametric types map like their upper bounds (`Vector{<:Real}` → array of
+`number`). Abstract types without a mapping and heterogeneous tuples throw an
+`ArgumentError`.
 
 ## Current limits (functions)
 
 - Varargs (`args...`) and keyword splats (`kwargs...`) are unsupported.
 - Runtime fallback extraction may not fully reconstruct required keyword-only
   semantics when source is unavailable to `CodeTracking`.
+- In OpenAI modes, optional/defaulted args are required and nullable; `null`
+  means "use the Julia default" in `callfunction`.

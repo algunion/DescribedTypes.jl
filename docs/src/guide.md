@@ -58,11 +58,12 @@ print(JSON.json(d, 2))
 
 ## Optional Fields
 
-Fields typed as `Union{Nothing, T}` are treated as optional:
+Fields typed as `Union{Nothing, T}` (or `Union{Missing, T}`) are treated as optional:
 
 - In `STANDARD` mode they are omitted from the `"required"` array.
 - In `OPENAI` / `OPENAI_TOOLS` modes all fields remain required (per OpenAI spec),
-  but optional fields use `["type", "null"]` to allow a `null` value.
+  but optional fields use `["type", "null"]` to allow a `null` value. If the
+  field also has an `enum`, `null` is added to it as well.
 
 ```@example guide
 struct Query
@@ -201,6 +202,46 @@ shared types into `$defs` and reference them via `$ref`:
 print(JSON.json(schema(Person, use_references=true), 2))
 ```
 
+Recursive types (a `struct` that contains itself, directly or through a
+collection) can only be expressed with references; inlining them throws an
+`ArgumentError` that says so.
+
+```@example guide
+struct Comment
+    text::String
+    replies::Vector{Comment}
+end
+
+print(JSON.json(schema(Comment, use_references=true), 2))
+```
+
+## Supported Julia Types
+
+| Julia type                                | JSON Schema                                              |
+| :---------------------------------------- | :------------------------------------------------------- |
+| `AbstractString`, `Symbol`                | `{"type": "string"}`                                     |
+| `Bool`                                    | `{"type": "boolean"}`                                    |
+| `<:Integer`                               | `{"type": "integer"}`                                    |
+| `<:Real`                                  | `{"type": "number"}`                                     |
+| `Nothing`, `Missing`                      | `{"type": "null"}`                                       |
+| `<:Enum`                                  | `{"type": "string", "enum": [...]}`                      |
+| `AbstractArray{T}`, `AbstractSet{T}`      | `{"type": "array", "items": T}`                          |
+| `NTuple{N,T}`                             | array of `T` with `minItems = maxItems = N`              |
+| `AbstractDict{K,V}`                       | `{"type": "object", "additionalProperties": V}`          |
+| `Union{A,B}`                              | `{"anyOf": [A, B]}`                                      |
+| `Union{Nothing,T}`, `Union{Missing,T}`    | optional `T` (see [Optional Fields](@ref))               |
+| `Any`                                     | `{}` (any JSON value)                                    |
+| concrete `struct`                         | `{"type": "object", ...}`                                |
+
+Parametric types use their bounds: a field or argument typed `Vector{<:Real}`,
+or `x::T` in a method with `where {T<:Integer}`, maps like `Vector{Real}` or
+`Integer`.
+
+OpenAI strict mode (`OPENAI` / `OPENAI_TOOLS`) cannot express open-ended
+values, so `Any` and `AbstractDict` throw an `ArgumentError` in those modes
+instead of producing a schema the API would reject. Heterogeneous tuples and
+abstract types without a JSON mapping throw in every mode.
+
 ## Custom Dict Type
 
 By default schemas use `JSON.Object` (preserves insertion order). You can
@@ -225,8 +266,11 @@ function weather(city::String, days::Int=3; unit::String="celsius", include_humi
 end
 
 sig = extractsignature(weather)
-sig.name, length(sig.args)
+sig.name, length(sig.args), sig.description
 ```
+
+The method's docstring becomes the tool description unless an annotation
+provides one.
 
 You can customize method/argument metadata with [`MethodAnnotation`](@ref) and
 [`ArgAnnotation`](@ref):
@@ -319,4 +363,9 @@ callfunction(weather_multi, Dict("city" => "Paris", "days" => 2), selector=selec
 - Runtime fallback extraction (used when source is not available through
   `CodeTracking`) may not fully recover required-keyword semantics.
 - In OpenAI modes, optional/defaulted function args are emitted as required
-  nullable fields (`["type", "null"]`) to match strict-tool conventions.
+  nullable fields (`["type", "null"]`) to match strict-tool conventions. A
+  `null` value means "use the Julia default", so `null` is also added to any
+  `enum` list of such an argument.
+- Methods with `where` clauses and definitions wrapped in macros (`@inline`,
+  `Base.@constprop`, ...) are supported; type parameters map to their upper
+  bounds.
