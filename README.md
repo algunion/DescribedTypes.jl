@@ -173,7 +173,8 @@ Tool schema output:
         "description": "Temperature unit",
         "enum": [
           "celsius",
-          "fahrenheit"
+          "fahrenheit",
+          null
         ]
       },
       "include_humidity": {
@@ -322,7 +323,7 @@ schema(PersonSymbolEnum, llm_adapter=OPENAI, enum_duplicate_policy=:error)
 
 Raises:
 ```text
-ArgumentError("Duplicate enum value after normalization: \"Alice\".")
+ArgumentError("Field `name` of PersonSymbolEnum: Duplicate enum value after normalization: \"Alice\".")
 ```
 
 ---
