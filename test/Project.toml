@@ -1,5 +1,13 @@
 [deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JSONSchema = "7d188eb4-7ad8-530c-ae41-71a32a6d4692"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+Aqua = "0.8"
+ArgCheck = "2"
+JSON = "1"
+JSONSchema = "1"
+Test = "1"

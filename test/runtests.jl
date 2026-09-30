@@ -2,6 +2,7 @@ using DescribedTypes
 using JSONSchema
 using JSON
 using ArgCheck
+using Aqua
 using Test
 
 module TestTypes
@@ -1667,4 +1668,12 @@ end
     @test DescribedTypes.ArgAnnotation(name=:x).required
     # an explicit contradiction is still rejected
     @test_throws ArgumentError DescribedTypes.ArgAnnotation(name=:x, required=true, llmexclude=true)
+end
+
+# ===================================================================
+# Package quality
+# ===================================================================
+
+@testset "Aqua" begin
+    Aqua.test_all(DescribedTypes)
 end

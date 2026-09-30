@@ -5,28 +5,32 @@ on:
       - main
     tags: ['*']
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
     permissions:
+      actions: write # julia-actions/cache deletes its old caches
       contents: write
       statuses: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
         with:
-          version: '1.11'
-      - uses: julia-actions/cache@v2
+          version: '1'
+      - uses: julia-actions/cache@v3
+      # docs/Project.toml points at the package through [sources], so no Pkg.develop is needed
       - name: Install dependencies
-        run: |
-          julia --project=docs -e '
-            using Pkg
-            Pkg.develop(PackageSpec(path=pwd()))
-            Pkg.instantiate()'
-      - name: Build and deploy
+        run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+      - uses: julia-actions/julia-docdeploy@v1
+        with:
+          install-package: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-        run: julia --project=docs docs/make.jl
